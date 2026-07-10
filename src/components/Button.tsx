@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native'
-import { colors, radius, spacing } from '@/theme'
+import { colors, radius, shadow, spacing } from '@/theme'
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'success'
 
@@ -27,7 +27,7 @@ export function Button({ title, onPress, variant = 'primary', disabled, loading 
       style={({ pressed }) => [
         styles.btn,
         { backgroundColor: bg[variant], opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
-        isSecondary && styles.secondaryBorder,
+        isSecondary ? styles.secondaryBorder : shadow.button,
       ]}
     >
       {loading ? (

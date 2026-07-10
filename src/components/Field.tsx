@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
 import type { KeyboardTypeOptions } from 'react-native'
 import { colors, radius, spacing } from '@/theme'
@@ -25,13 +26,21 @@ export function Field({
   error,
   editable = true,
 }: Props) {
+  const [focused, setFocused] = useState(false)
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
-        style={[styles.input, error ? styles.inputError : null, !editable && styles.disabled]}
+        style={[
+          styles.input,
+          focused && !error ? styles.inputFocused : null,
+          error ? styles.inputError : null,
+          !editable && styles.disabled,
+        ]}
         value={value}
         onChangeText={onChangeText}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         secureTextEntry={secureTextEntry}
@@ -58,6 +67,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
   },
+  inputFocused: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   inputError: { borderColor: colors.danger },
   disabled: { opacity: 0.6 },
   errorText: { color: colors.danger, fontSize: 12, marginTop: spacing.xs },

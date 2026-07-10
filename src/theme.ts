@@ -5,7 +5,10 @@ export const colors = {
   border: '#e2e5ea',
   text: '#1a1d21',
   textMuted: '#6b7280',
-  primary: '#2563eb',
+  primary: '#0E6B4D',
+  primaryDark: '#0A5540',
+  // Translucent brand tint for subtle fills (chips, active rows, focus rings).
+  primarySoft: '#0E6B4D1a',
   primaryText: '#ffffff',
   danger: '#dc2626',
   success: '#16a34a',
@@ -34,3 +37,21 @@ export const radius = {
   md: 10,
   lg: 14,
 }
+
+/** Reusable elevation for surfaces that should read as lifted (cards, buttons). */
+export const shadow = {
+  card: {
+    shadowColor: '#0b1f16',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  button: {
+    shadowColor: '#0b1f16',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+} as const
