@@ -7,9 +7,14 @@ import { Button } from '@/components/Button'
 import { QueryState } from '@/components/QueryState'
 import { useGetReadyItemsQuery, useMarkServedMutation } from '@/features/waiter/waiterApi'
 import { useStaffRealtime } from '@/features/realtime/useRealtime'
+import { StatusBadge } from '@/components/StatusBadge'
 import { colors, spacing } from '@/theme'
 
-/** READY items waiting to be carried to the table. */
+/**
+ * The to-serve queue: every approved, unserved item (NEW / PREPARING / READY).
+ * Kitchens that cook off the printed KOT never mark items ready, so the waiter
+ * serves directly from NEW.
+ */
 export function WaiterReadyScreen() {
   const { data, isLoading, isError, isFetching, refetch } = useGetReadyItemsQuery()
   const [markServed, { isLoading: busy }] = useMarkServedMutation()
@@ -17,7 +22,12 @@ export function WaiterReadyScreen() {
   useStaffRealtime(
     useCallback(
       (ev) => {
-        if (ev.type === 'order_item.status_changed' || ev.type === 'order.created') refetch()
+        if (
+          ev.type === 'order_item.status_changed' ||
+          ev.type === 'order.created' ||
+          ev.type === 'order.approval_decided'
+        )
+          refetch()
       },
       [refetch],
     ),
@@ -36,6 +46,8 @@ export function WaiterReadyScreen() {
               <Ionicons name="receipt-outline" size={16} color={colors.textMuted} style={styles.orderIcon} />
               <Text style={styles.orderNo}>#{item.order_number}</Text>
               {item.table_name ? <Text style={styles.table}>{item.table_name}</Text> : null}
+              <View style={styles.flex} />
+              <StatusBadge status={item.status} />
             </View>
             <Text style={styles.product}>
               {item.quantity}× {item.product_name}
@@ -53,7 +65,7 @@ export function WaiterReadyScreen() {
             loading={isLoading}
             error={isError}
             empty={!isLoading && !isError}
-            emptyText="Nothing ready to serve."
+            emptyText="Nothing to serve."
             emptyIcon="checkmark-done-outline"
           />
         }
@@ -65,6 +77,7 @@ export function WaiterReadyScreen() {
 const styles = StyleSheet.create({
   list: { padding: spacing.lg, flexGrow: 1 },
   rowTop: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs },
+  flex: { flex: 1 },
   orderIcon: { marginRight: spacing.xs },
   orderNo: { fontSize: 15, fontWeight: '800', color: colors.text, marginRight: spacing.sm },
   table: { fontSize: 13, color: colors.textMuted },

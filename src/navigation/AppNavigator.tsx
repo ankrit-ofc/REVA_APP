@@ -64,9 +64,9 @@ function WaiterNavigator() {
   return (
     <WaiterTabs.Navigator screenOptions={tabOptions}>
       <WaiterTabs.Screen
-        name="Ready"
+        name="Serve"
         component={WaiterReadyScreen}
-        options={{ title: 'Ready', tabBarIcon: tabIcon('checkmark-done-outline') }}
+        options={{ title: 'Serve', tabBarIcon: tabIcon('checkmark-done-outline') }}
       />
       <WaiterTabs.Screen
         name="Orders"
