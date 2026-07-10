@@ -35,8 +35,11 @@ admin, or superadmin).
 
 - Node 20+ and the Reva backend running (see the main repo; dev backend listens on
   `:8000`).
-- A **custom dev build** — this app uses native modules (`expo-secure-store`,
-  `expo-notifications`, `expo-image-picker`), so **Expo Go will not work**. Use
+- **Expo Go works for day-to-day UI development**, with one caveat: staff push
+  notifications are unavailable there (`expo-notifications` was removed from Expo
+  Go in SDK 53), so `@/lib/notifications` disables them automatically when it
+  detects the Expo Go runtime. Everything else runs.
+- For **notifications and release testing**, use a **custom dev build**:
   `npx expo run:android` / `npx expo run:ios`, or an EAS dev build.
 
 ## Configure the backend URL

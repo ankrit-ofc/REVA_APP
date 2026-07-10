@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef } from 'react'
-import * as Notifications from 'expo-notifications'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Platform } from 'react-native'
+import { Notifications } from '@/lib/notifications'
 import { useStaffRealtime } from '@/features/realtime/useRealtime'
 import type { RealtimeEvent } from '@/types'
 
 const PREF_KEY = 'staff_alerts_enabled'
 
-// Show a local notification even while the app is foregrounded.
-Notifications.setNotificationHandler({
+// Show a local notification even while the app is foregrounded. Skipped in Expo
+// Go, where the notifications module is unavailable (see @/lib/notifications).
+Notifications?.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
@@ -47,6 +48,7 @@ export function useStaffAlerts(): void {
   const enabledRef = useRef(true)
 
   useEffect(() => {
+    if (!Notifications) return // Expo Go — notifications unavailable
     let active = true
     ;(async () => {
       try {
@@ -71,7 +73,7 @@ export function useStaffAlerts(): void {
 
   useStaffRealtime(
     useCallback((ev: RealtimeEvent) => {
-      if (!enabledRef.current) return
+      if (!Notifications || !enabledRef.current) return
       const msg = messageFor(ev)
       if (!msg) return
       Notifications.scheduleNotificationAsync({
