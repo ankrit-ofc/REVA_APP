@@ -1,10 +1,20 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
+import { Ionicons } from '@expo/vector-icons'
 import { LogoutButton } from '@/components/LogoutButton'
 import { useAuth } from '@/features/auth/useAuth'
 import { useStaffAlerts } from '@/lib/useStaffAlerts'
 import type { AdminStackParamList } from './types'
 import { colors } from '@/theme'
+
+type IoniconName = keyof typeof Ionicons.glyphMap
+
+/** Builds a tabBarIcon render fn for a given Ionicons glyph. */
+function tabIcon(name: IoniconName) {
+  return ({ color, size }: { color: string; size: number }) => (
+    <Ionicons name={name} size={size} color={color} />
+  )
+}
 
 import { KitchenScreen } from '@/screens/kitchen/KitchenScreen'
 import { WaiterReadyScreen } from '@/screens/waiter/WaiterReadyScreen'
@@ -35,6 +45,7 @@ const tabOptions = {
   headerTitleStyle: { color: colors.text },
   headerRight,
   tabBarActiveTintColor: colors.primary,
+  tabBarInactiveTintColor: colors.textMuted,
 } as const
 
 // ── Kitchen ───────────────────────────────────────────────────────────────────
@@ -52,9 +63,21 @@ const WaiterTabs = createBottomTabNavigator()
 function WaiterNavigator() {
   return (
     <WaiterTabs.Navigator screenOptions={tabOptions}>
-      <WaiterTabs.Screen name="Ready" component={WaiterReadyScreen} options={{ title: 'Ready' }} />
-      <WaiterTabs.Screen name="Orders" component={WaiterOrdersScreen} options={{ title: 'Orders' }} />
-      <WaiterTabs.Screen name="WaiterBilling" component={WaiterBillingScreen} options={{ title: 'Billing' }} />
+      <WaiterTabs.Screen
+        name="Ready"
+        component={WaiterReadyScreen}
+        options={{ title: 'Ready', tabBarIcon: tabIcon('checkmark-done-outline') }}
+      />
+      <WaiterTabs.Screen
+        name="Orders"
+        component={WaiterOrdersScreen}
+        options={{ title: 'Orders', tabBarIcon: tabIcon('receipt-outline') }}
+      />
+      <WaiterTabs.Screen
+        name="WaiterBilling"
+        component={WaiterBillingScreen}
+        options={{ title: 'Billing', tabBarIcon: tabIcon('card-outline') }}
+      />
     </WaiterTabs.Navigator>
   )
 }
@@ -64,8 +87,16 @@ const CounterTabs = createBottomTabNavigator()
 function CounterNavigator() {
   return (
     <CounterTabs.Navigator screenOptions={tabOptions}>
-      <CounterTabs.Screen name="Billing" component={CounterBillingScreen} options={{ title: 'Billing' }} />
-      <CounterTabs.Screen name="Display" component={CounterDisplayScreen} options={{ title: 'Display' }} />
+      <CounterTabs.Screen
+        name="Billing"
+        component={CounterBillingScreen}
+        options={{ title: 'Billing', tabBarIcon: tabIcon('card-outline') }}
+      />
+      <CounterTabs.Screen
+        name="Display"
+        component={CounterDisplayScreen}
+        options={{ title: 'Display', tabBarIcon: tabIcon('tv-outline') }}
+      />
     </CounterTabs.Navigator>
   )
 }
