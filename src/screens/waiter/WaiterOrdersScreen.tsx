@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { ScrollView, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -86,7 +87,10 @@ export function WaiterOrdersScreen() {
           />
         }
       >
-        <Text style={styles.section}>Pending Approvals</Text>
+        <View style={styles.sectionRow}>
+          <Ionicons name="hourglass-outline" size={18} color={colors.warning} />
+          <Text style={styles.section}>Pending Approvals</Text>
+        </View>
         {groups.length === 0 ? (
           <Text style={styles.muted}>No batches awaiting approval.</Text>
         ) : (
@@ -126,7 +130,10 @@ export function WaiterOrdersScreen() {
           ))
         )}
 
-        <Text style={styles.section}>Open Tables</Text>
+        <View style={styles.sectionRow}>
+          <Ionicons name="restaurant-outline" size={18} color={colors.primary} />
+          <Text style={styles.section}>Open Tables</Text>
+        </View>
         {open.length === 0 ? (
           <Text style={styles.muted}>No open tables.</Text>
         ) : (
@@ -143,7 +150,12 @@ export function WaiterOrdersScreen() {
               {o.pending_item_count > 0 ? (
                 <Text style={styles.pending}>{o.pending_item_count} awaiting approval</Text>
               ) : null}
-              {o.bill_requested ? <Text style={styles.billRequested}>🔔 Bill requested</Text> : null}
+              {o.bill_requested ? (
+                <View style={styles.billRow}>
+                  <Ionicons name="notifications-outline" size={14} color={colors.warning} />
+                  <Text style={styles.billRequested}>Bill requested</Text>
+                </View>
+              ) : null}
               <View style={{ height: spacing.sm }} />
               <Button
                 title="Move to billing"
@@ -166,7 +178,14 @@ export function WaiterOrdersScreen() {
 
 const styles = StyleSheet.create({
   list: { padding: spacing.lg, flexGrow: 1 },
-  section: { fontSize: 16, fontWeight: '800', color: colors.text, marginTop: spacing.sm, marginBottom: spacing.sm },
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  section: { fontSize: 16, fontWeight: '800', color: colors.text },
   rowTop: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs },
   flex: { flex: 1 },
   orderNo: { fontSize: 15, fontWeight: '800', color: colors.text, marginRight: spacing.sm },
@@ -175,6 +194,7 @@ const styles = StyleSheet.create({
   muted: { fontSize: 13, color: colors.textMuted, marginBottom: spacing.sm },
   product: { fontSize: 14, color: colors.text, marginBottom: 2 },
   pending: { fontSize: 13, color: colors.warning, fontWeight: '600', marginTop: 2 },
-  billRequested: { fontSize: 13, color: colors.warning, fontWeight: '700', marginTop: 2 },
+  billRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
+  billRequested: { fontSize: 13, color: colors.warning, fontWeight: '700' },
   actions: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md },
 })

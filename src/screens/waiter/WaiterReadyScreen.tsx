@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -32,6 +33,7 @@ export function WaiterReadyScreen() {
         renderItem={({ item }) => (
           <Card>
             <View style={styles.rowTop}>
+              <Ionicons name="receipt-outline" size={16} color={colors.textMuted} style={styles.orderIcon} />
               <Text style={styles.orderNo}>#{item.order_number}</Text>
               {item.table_name ? <Text style={styles.table}>{item.table_name}</Text> : null}
             </View>
@@ -52,6 +54,7 @@ export function WaiterReadyScreen() {
             error={isError}
             empty={!isLoading && !isError}
             emptyText="Nothing ready to serve."
+            emptyIcon="checkmark-done-outline"
           />
         }
       />
@@ -62,6 +65,7 @@ export function WaiterReadyScreen() {
 const styles = StyleSheet.create({
   list: { padding: spacing.lg, flexGrow: 1 },
   rowTop: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs },
+  orderIcon: { marginRight: spacing.xs },
   orderNo: { fontSize: 15, fontWeight: '800', color: colors.text, marginRight: spacing.sm },
   table: { fontSize: 13, color: colors.textMuted },
   product: { fontSize: 16, fontWeight: '600', color: colors.text },
