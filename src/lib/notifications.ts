@@ -22,9 +22,15 @@ type NotificationsModule = typeof import('expo-notifications')
 let mod: NotificationsModule | null = null
 if (!isExpoGo) {
   // Lazy require: a static import would eval expo-notifications' top-level code
-  // and throw in Expo Go before this guard could run.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  mod = require('expo-notifications') as NotificationsModule
+  // and throw in Expo Go before this guard could run. The try/catch is a
+  // belt-and-suspenders guard in case the runtime check ever misdetects Expo Go
+  // — a failed load just disables notifications instead of crashing the app.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    mod = require('expo-notifications') as NotificationsModule
+  } catch {
+    mod = null
+  }
 }
 
 /** The native module, or `null` when unavailable (Expo Go). */
