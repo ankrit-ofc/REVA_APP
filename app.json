@@ -20,28 +20,12 @@
       "usesCleartextTraffic": true,
       "package": "com.lan_tian.revamobile"
     },
-    "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal"
-    },
-    "preview": {
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      }
-    },
-    "production": {
-      "android": {
-        "buildType": "apk"
-      }
-    },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/withStaffForegroundService"
     ]
   }
-}
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { Platform } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import { Notifications } from '@/lib/notifications'
+import { messageFor } from '@/lib/alertMessages'
 import { useStaffRealtime } from '@/features/realtime/useRealtime'
 import type { RealtimeEvent } from '@/types'
 
@@ -22,52 +23,15 @@ Notifications?.setNotificationHandler({
   }),
 })
 
-/** Read a string field off an event, or undefined when absent/non-string. */
-function str(ev: RealtimeEvent, key: string): string | undefined {
-  const v = ev[key]
-  return typeof v === 'string' && v.length > 0 ? v : undefined
-}
-
-/** `Table 12` / `Table 12 (order #7)` / a fallback when the table is unknown. */
-function tableLabel(ev: RealtimeEvent, fallback: string): string {
-  const table = str(ev, 'table_name')
-  return table ? `Table ${table}` : fallback
-}
-
-/** ` (order #7)` when the event carries an order number, else ''. */
-function orderSuffix(ev: RealtimeEvent): string {
-  const n = ev['order_number']
-  return typeof n === 'number' || typeof n === 'string' ? ` (order #${n})` : ''
-}
-
-/** Human-readable alert copy per event type, or null to ignore the event. */
-function messageFor(ev: RealtimeEvent): { title: string; body: string } | null {
-  switch (ev.type) {
-    case 'waiter.called':
-      return { title: 'Waiter called', body: `${tableLabel(ev, 'A table')} needs a waiter.` }
-    case 'order.created':
-      return { title: 'New order', body: `${tableLabel(ev, 'A table')} placed an order${orderSuffix(ev)}.` }
-    case 'order.approval_requested':
-      return {
-        title: 'Approval needed',
-        body: `${tableLabel(ev, 'A table')} placed an order${orderSuffix(ev)} — approve or reject it.`,
-      }
-    case 'bill.requested':
-      return { title: 'Bill requested', body: `${tableLabel(ev, 'A table')} asked for the bill${orderSuffix(ev)}.` }
-    case 'order_item.status_changed':
-      return ev['status'] === 'READY'
-        ? { title: 'Item ready', body: `An item is ready to serve.` }
-        : null
-    default:
-      return null
-  }
-}
-
 /**
  * Mounts once inside the authenticated area. Presents a local notification
  * (with sound) for the events relevant to staff, gated by a persisted
  * preference. This is the React Native replacement for the web app's Web Audio
  * chime + browser Notification API.
+ *
+ * Posts only while the app is FOREGROUNDED. When backgrounded, the notifee
+ * foreground service (see features/background) is the notifier — the AppState
+ * check keeps the two from double-firing for the same event.
  */
 export function useStaffAlerts(): void {
   const enabledRef = useRef(true)
@@ -101,6 +65,9 @@ export function useStaffAlerts(): void {
   useStaffRealtime(
     useCallback((ev: RealtimeEvent) => {
       if (!Notifications || !enabledRef.current) return
+      // Background delivery is owned by the foreground service; only post here
+      // when the app is actually in front, to avoid duplicate notifications.
+      if (AppState.currentState !== 'active') return
       const msg = messageFor(ev)
       if (!msg) return
       Notifications.scheduleNotificationAsync({
