@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { AppState, Platform } from 'react-native'
 import { Notifications } from '@/lib/notifications'
 import { messageFor } from '@/lib/alertMessages'
+import { registerForPush } from '@/features/push/push'
 import { useStaffRealtime } from '@/features/realtime/useRealtime'
 import type { RealtimeEvent } from '@/types'
 
@@ -12,15 +13,22 @@ const PREF_KEY = 'staff_alerts_enabled'
 // settings (importance, lock-screen visibility) requires a new channel id.
 const CHANNEL_ID = 'staff-v2'
 
-// Show a local notification even while the app is foregrounded. Skipped in Expo
-// Go, where the notifications module is unavailable (see @/lib/notifications).
+// Foreground display handler. A remote PUSH arriving while the app is in front is
+// a duplicate of the in-app WS alert below, so it's suppressed here; local
+// (scheduled) alerts still show. In the background/closed the OS shows the push
+// directly (this handler doesn't run then). Skipped in Expo Go.
 Notifications?.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    const isPush =
+      (notification.request.trigger as { type?: string } | null)?.type === 'push'
+    const show = !isPush
+    return {
+      shouldShowBanner: show,
+      shouldShowList: show,
+      shouldPlaySound: show,
+      shouldSetBadge: false,
+    }
+  },
 })
 
 /**
@@ -29,9 +37,9 @@ Notifications?.setNotificationHandler({
  * preference. This is the React Native replacement for the web app's Web Audio
  * chime + browser Notification API.
  *
- * Posts only while the app is FOREGROUNDED. When backgrounded, the notifee
- * foreground service (see features/background) is the notifier — the AppState
- * check keeps the two from double-firing for the same event.
+ * Posts only while the app is FOREGROUNDED. When backgrounded or closed, push
+ * notifications (registered here via registerForPush) are the notifier — the
+ * AppState check keeps the two from double-firing for the same event.
  */
 export function useStaffAlerts(): void {
   const enabledRef = useRef(true)
@@ -56,6 +64,8 @@ export function useStaffAlerts(): void {
       } catch {
         // notifications unavailable — alerts silently disabled
       }
+      // Register this device for push so alerts arrive when the app is closed.
+      await registerForPush()
     })()
     return () => {
       active = false
@@ -65,8 +75,8 @@ export function useStaffAlerts(): void {
   useStaffRealtime(
     useCallback((ev: RealtimeEvent) => {
       if (!Notifications || !enabledRef.current) return
-      // Background delivery is owned by the foreground service; only post here
-      // when the app is actually in front, to avoid duplicate notifications.
+      // Background/closed delivery is owned by push; only post the WS alert when
+      // the app is actually in front, to avoid duplicate notifications.
       if (AppState.currentState !== 'active') return
       const msg = messageFor(ev)
       if (!msg) return

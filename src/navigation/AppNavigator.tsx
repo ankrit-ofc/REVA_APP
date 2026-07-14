@@ -1,14 +1,9 @@
-import { useEffect } from 'react'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
 import { LogoutButton } from '@/components/LogoutButton'
 import { useAuth } from '@/features/auth/useAuth'
 import { useStaffAlerts } from '@/lib/useStaffAlerts'
-import {
-  startBackgroundConnection,
-  stopBackgroundConnection,
-} from '@/features/background/foregroundService'
 import type { AdminStackParamList } from './types'
 import { colors } from '@/theme'
 
@@ -155,17 +150,6 @@ function SuperadminNavigator() {
 export function AppNavigator() {
   const { role } = useAuth()
   useStaffAlerts()
-
-  // AppNavigator is mounted only while authenticated, so its lifetime tracks the
-  // session: start the background order-notification service on login, stop it on
-  // logout (unmount). No-op on iOS / Expo Go. COUNTER_DISPLAY has no staff alerts.
-  useEffect(() => {
-    if (role === 'COUNTER_DISPLAY') return
-    void startBackgroundConnection()
-    return () => {
-      void stopBackgroundConnection()
-    }
-  }, [role])
 
   switch (role) {
     case 'SUPERADMIN':
