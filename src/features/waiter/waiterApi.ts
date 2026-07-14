@@ -2,7 +2,12 @@ import { z } from 'zod'
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { axiosBaseQuery } from '@/services/api'
 import { parseWith } from '@/lib/parseResponse'
-import { queueItemResponseSchema, type QueueItemResponse } from '@/lib/schemas/workflow'
+import {
+  queueItemResponseSchema,
+  waiterCallResponseSchema,
+  type QueueItemResponse,
+  type WaiterCallResponse,
+} from '@/lib/schemas/workflow'
 import {
   orderItemResponseSchema,
   orderResponseSchema,
@@ -14,8 +19,18 @@ import {
 export const waiterApi = createApi({
   reducerPath: 'waiterApi',
   baseQuery: axiosBaseQuery,
-  tagTypes: ['WaiterQueue', 'WaiterOpenOrders', 'WaiterPending'],
+  tagTypes: ['WaiterQueue', 'WaiterOpenOrders', 'WaiterPending', 'WaiterCalls'],
   endpoints: (builder) => ({
+    getWaiterCalls: builder.query<WaiterCallResponse[], void>({
+      query: () => ({ method: 'GET', url: '/waiter/calls' }),
+      transformResponse: parseWith(z.array(waiterCallResponseSchema)),
+      providesTags: ['WaiterCalls'],
+    }),
+    attendWaiterCall: builder.mutation<WaiterCallResponse, string>({
+      query: (callId) => ({ method: 'POST', url: `/waiter/calls/${callId}/attend` }),
+      transformResponse: parseWith(waiterCallResponseSchema),
+      invalidatesTags: ['WaiterCalls'],
+    }),
     getReadyItems: builder.query<QueueItemResponse[], void>({
       query: () => ({ method: 'GET', url: '/waiter/ready' }),
       // Coerce Decimal-as-string money fields (unit_price, tax_rate, …).
@@ -79,6 +94,8 @@ export const waiterApi = createApi({
 })
 
 export const {
+  useGetWaiterCallsQuery,
+  useAttendWaiterCallMutation,
   useGetReadyItemsQuery,
   useGetPendingApprovalsQuery,
   useGetOpenOrdersQuery,

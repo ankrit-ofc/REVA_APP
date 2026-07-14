@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { Field } from '@/components/Field'
@@ -12,6 +12,7 @@ import {
   useReopenCounterOrderMutation,
   useStartBillingMutation,
   useCloseUnpaidMutation,
+  useQuickBillMutation,
   useGenerateInvoiceMutation,
   useGetInvoiceQuery,
   usePayInvoiceMutation,
@@ -57,12 +58,17 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
   const [reopenOrder, { isLoading: reopenBusy }] = useReopenCounterOrderMutation()
   const [closeUnpaid, { isLoading: closeBusy }] = useCloseUnpaidMutation()
   const [generateInvoice, { isLoading: genBusy }] = useGenerateInvoiceMutation()
+  const [quickBill, { isLoading: billBusy }] = useQuickBillMutation()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [discountType, setDiscountType] = useState<'flat' | 'percent'>('flat')
   const [discountValue, setDiscountValue] = useState('0')
   const [reopenTarget, setReopenTarget] = useState<CounterOrderSummary | null>(null)
   const [closeTarget, setCloseTarget] = useState<CounterOrderSummary | null>(null)
+  const [billTarget, setBillTarget] = useState<CounterOrderSummary | null>(null)
+  const [billErr, setBillErr] = useState<string | null>(null)
+  // Stable idempotency key per Bill & Clear attempt — reused if the confirm is retried.
+  const billKey = useRef('')
   const [err, setErr] = useState<string | null>(null)
 
   useStaffRealtime(
@@ -105,6 +111,23 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
     }
   }
 
+  function openBill(o: CounterOrderSummary) {
+    billKey.current = newIdempotencyKey()
+    setBillErr(null)
+    setBillTarget(o)
+  }
+
+  async function confirmBill(method: CounterPayMethod) {
+    if (!billTarget) return
+    setBillErr(null)
+    try {
+      await quickBill({ orderId: billTarget.id, method, idempotencyKey: billKey.current }).unwrap()
+      setBillTarget(null)
+    } catch (e) {
+      setBillErr(errDetail(e))
+    }
+  }
+
   const loading = openQ.isLoading || queueQ.isLoading
 
   return (
@@ -139,6 +162,13 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
                   ) : (
                     <Text style={styles.muted}>Awaiting guest’s bill request</Text>
                   )}
+                  {o.bill_requested ? (
+                    <View style={styles.actions}>
+                      <View style={styles.flex}>
+                        <Button title="Bill & clear" variant="success" onPress={() => openBill(o)} />
+                      </View>
+                    </View>
+                  ) : null}
                   <View style={styles.actions}>
                     {!o.bill_requested ? (
                       <>
@@ -155,6 +185,7 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
                     <View style={styles.flex}>
                       <Button
                         title="Move to billing"
+                        variant="secondary"
                         disabled={!o.bill_requested}
                         onPress={() => markMealFinished(o.id)}
                       />
@@ -273,7 +304,70 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
         }}
         onClose={() => setCloseTarget(null)}
       />
+      <MethodModal
+        order={billTarget}
+        busy={billBusy}
+        error={billErr}
+        onConfirm={confirmBill}
+        onClose={() => setBillTarget(null)}
+      />
     </>
+  )
+}
+
+// ── Method picker (one-tap Bill & clear) ──────────────────────────────────────
+
+function MethodModal({
+  order,
+  busy,
+  error,
+  onConfirm,
+  onClose,
+}: {
+  order: CounterOrderSummary | null
+  busy: boolean
+  error: string | null
+  onConfirm: (method: CounterPayMethod) => void
+  onClose: () => void
+}) {
+  const [method, setMethod] = useState<CounterPayMethod>('CASH')
+
+  return (
+    <Modal visible={!!order} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.modal}>
+          <Text style={styles.modalTitle}>
+            Bill &amp; clear{order ? ` #${order.order_number}` : ''}
+          </Text>
+          <Text style={styles.modalHint}>
+            Records payment{order ? ` for ${order.table_name}` : ''} and clears the table. Choose how
+            the guest paid.
+          </Text>
+          <View style={styles.methodRow}>
+            {PAY_METHODS.map((m) => (
+              <View key={m} style={styles.flex}>
+                <ToggleChip label={PAY_LABEL[m]} active={method === m} onPress={() => setMethod(m)} />
+              </View>
+            ))}
+          </View>
+          {error ? <Text style={styles.err}>{error}</Text> : null}
+          <View style={styles.actions}>
+            <View style={styles.flex}>
+              <Button title="Cancel" variant="secondary" onPress={onClose} />
+            </View>
+            <View style={{ width: spacing.sm }} />
+            <View style={styles.flex}>
+              <Button
+                title="Confirm & clear"
+                variant="success"
+                loading={busy}
+                onPress={() => onConfirm(method)}
+              />
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
   )
 }
 
@@ -496,4 +590,17 @@ const styles = StyleSheet.create({
   chipActive: { borderColor: colors.primary, backgroundColor: colors.primary },
   chipText: { color: colors.text, fontWeight: '600' },
   chipTextActive: { color: colors.primaryText },
+  overlay: {
+    flex: 1,
+    backgroundColor: '#00000066',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  modal: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: spacing.xs },
+  modalHint: { fontSize: 13, color: colors.textMuted, marginBottom: spacing.md },
 })

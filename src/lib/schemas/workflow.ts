@@ -20,3 +20,13 @@ export const queueItemResponseSchema = z.object({
 })
 
 export type QueueItemResponse = z.infer<typeof queueItemResponseSchema>
+
+export const waiterCallResponseSchema = z.object({
+  id: z.string().uuid(),
+  table_id: z.string().uuid(),
+  table_name: z.string(),
+  status: z.string(),
+  created_at: z.string(),
+})
+
+export type WaiterCallResponse = z.infer<typeof waiterCallResponseSchema>

@@ -17,6 +17,7 @@ function tabIcon(name: IoniconName) {
 }
 
 import { KitchenScreen } from '@/screens/kitchen/KitchenScreen'
+import { WaiterCallsScreen } from '@/screens/waiter/WaiterCallsScreen'
 import { WaiterReadyScreen } from '@/screens/waiter/WaiterReadyScreen'
 import { WaiterOrdersScreen } from '@/screens/waiter/WaiterOrdersScreen'
 import { WaiterBillingScreen } from '@/screens/waiter/WaiterBillingScreen'
@@ -63,6 +64,11 @@ const WaiterTabs = createBottomTabNavigator()
 function WaiterNavigator() {
   return (
     <WaiterTabs.Navigator screenOptions={tabOptions}>
+      <WaiterTabs.Screen
+        name="Calls"
+        component={WaiterCallsScreen}
+        options={{ title: 'Calls', tabBarIcon: tabIcon('notifications-outline') }}
+      />
       <WaiterTabs.Screen
         name="Serve"
         component={WaiterReadyScreen}

@@ -74,6 +74,21 @@ export const counterApi = createApi({
       transformResponse: parseWith(orderResponseSchema),
       invalidatesTags: ['CounterOpenOrders', 'CounterOrders'],
     }),
+    // One-tap: bill an OPEN, bill-requested order with the chosen method, then
+    // close it and clear the table. Idempotency-Key makes retries safe.
+    quickBill: builder.mutation<
+      InvoiceResponse,
+      { orderId: string; method: CounterPayMethod; idempotencyKey: string }
+    >({
+      query: ({ orderId, method, idempotencyKey }) => ({
+        method: 'POST',
+        url: `/counter/orders/${orderId}/quick-bill`,
+        data: { method },
+        headers: { 'Idempotency-Key': idempotencyKey },
+      }),
+      transformResponse: parseWith(invoiceResponseSchema),
+      invalidatesTags: ['CounterOpenOrders', 'CounterOrders'],
+    }),
     generateInvoice: builder.mutation<InvoiceResponse, GenerateInvoiceBody>({
       query: (body) => ({ method: 'POST', url: '/invoices', data: body }),
       transformResponse: parseWith(invoiceResponseSchema),
@@ -129,6 +144,7 @@ export const {
   useReopenCounterOrderMutation,
   useStartBillingMutation,
   useCloseUnpaidMutation,
+  useQuickBillMutation,
   useGenerateInvoiceMutation,
   useGetInvoiceQuery,
   useLazyGetReceiptQuery,
