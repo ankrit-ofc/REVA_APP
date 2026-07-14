@@ -24,6 +24,14 @@ export interface WsConfig {
 const WS_POLICY_VIOLATION = 1008
 const MAX_BACKOFF_MS = 30_000
 
+// Keepalive: send a lightweight ping so the client→server leg stays active, and
+// treat any silence longer than STALE_MS as a dead (half-open) socket. The server
+// heartbeats every ~25s, so a healthy connection is never stale; a connection
+// dropped by a proxy (Cloudflare ~100s idle) or a network switch is detected and
+// re-established within ~STALE_MS instead of hanging silently until who-knows-when.
+const PING_INTERVAL_MS = 20_000
+const STALE_MS = 45_000
+
 function buildStaffWsUrl(): string | null {
   const token = getAccessToken()
   if (!token) return null
@@ -35,6 +43,8 @@ export class ReconnectingWs {
   private destroyed = false
   private retryDelayMs = 1_000
   private retryTimer: ReturnType<typeof setTimeout> | null = null
+  private pingTimer: ReturnType<typeof setInterval> | null = null
+  private lastActivity = 0
 
   constructor(private readonly config: WsConfig) {
     this.connect()
@@ -50,12 +60,18 @@ export class ReconnectingWs {
 
     this.ws.onopen = () => {
       this.retryDelayMs = 1_000
+      this.lastActivity = Date.now()
+      this.startHeartbeat()
       this.config.onOpen?.()
     }
 
     this.ws.onmessage = (event) => {
+      // Any frame (event OR server heartbeat) proves the socket is alive.
+      this.lastActivity = Date.now()
       try {
         const data = JSON.parse(String(event.data)) as unknown
+        // Swallow keepalive frames; screens only care about domain events.
+        if ((data as { type?: unknown } | null)?.type === 'heartbeat') return
         this.config.onMessage(data)
       } catch {
         // discard malformed frames
@@ -63,6 +79,7 @@ export class ReconnectingWs {
     }
 
     this.ws.onclose = (event) => {
+      this.stopHeartbeat()
       this.config.onClose?.(event.code === 1000)
       if (this.destroyed || event.code === WS_POLICY_VIOLATION) return
       // Exponential backoff reconnect.
@@ -77,9 +94,57 @@ export class ReconnectingWs {
     }
   }
 
+  /** Ping periodically and force-reconnect a socket that has gone silent. */
+  private startHeartbeat(): void {
+    this.stopHeartbeat()
+    this.pingTimer = setInterval(() => {
+      if (Date.now() - this.lastActivity > STALE_MS) {
+        this.forceReconnect()
+        return
+      }
+      try {
+        this.ws?.send('ping')
+      } catch {
+        /* a failed send surfaces as onclose */
+      }
+    }, PING_INTERVAL_MS)
+  }
+
+  /**
+   * Tear down a half-open socket and reconnect immediately. We detach the old
+   * socket's handlers first so its (possibly delayed or never-firing) onclose
+   * cannot also schedule a backoff reconnect — exactly one reconnect happens.
+   */
+  private forceReconnect(): void {
+    this.stopHeartbeat()
+    const old = this.ws
+    this.ws = null
+    if (old) {
+      old.onopen = null
+      old.onmessage = null
+      old.onclose = null
+      old.onerror = null
+      try {
+        old.close()
+      } catch {
+        /* ignore */
+      }
+    }
+    this.retryDelayMs = 1_000
+    this.connect()
+  }
+
+  private stopHeartbeat(): void {
+    if (this.pingTimer !== null) {
+      clearInterval(this.pingTimer)
+      this.pingTimer = null
+    }
+  }
+
   destroy(): void {
     this.destroyed = true
     if (this.retryTimer !== null) clearTimeout(this.retryTimer)
+    this.stopHeartbeat()
     this.ws?.close()
   }
 }
