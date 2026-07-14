@@ -7,6 +7,10 @@ import type { RealtimeEvent } from '@/types'
 
 const PREF_KEY = 'staff_alerts_enabled'
 
+// Android channel settings are immutable after first creation, so shipping new
+// settings (importance, lock-screen visibility) requires a new channel id.
+const CHANNEL_ID = 'staff-v2'
+
 // Show a local notification even while the app is foregrounded. Skipped in Expo
 // Go, where the notifications module is unavailable (see @/lib/notifications).
 Notifications?.setNotificationHandler({
@@ -55,9 +59,11 @@ export function useStaffAlerts(): void {
         const perm = await Notifications.getPermissionsAsync()
         if (!perm.granted) await Notifications.requestPermissionsAsync()
         if (Platform.OS === 'android') {
-          await Notifications.setNotificationChannelAsync('staff', {
+          await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
             name: 'Staff alerts',
-            importance: Notifications.AndroidImportance.HIGH,
+            importance: Notifications.AndroidImportance.MAX,
+            lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+            sound: 'default',
           })
         }
         const stored = await AsyncStorage.getItem(PREF_KEY)
@@ -78,7 +84,9 @@ export function useStaffAlerts(): void {
       if (!msg) return
       Notifications.scheduleNotificationAsync({
         content: { title: msg.title, body: msg.body },
-        trigger: null,
+        // trigger: null would post to the default "Miscellaneous" channel;
+        // a channel-only trigger fires immediately on the staff channel.
+        trigger: Platform.OS === 'android' ? { channelId: CHANNEL_ID } : null,
       }).catch(() => {
         /* ignore scheduling failures */
       })
