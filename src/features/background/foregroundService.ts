@@ -23,7 +23,7 @@
  * Android-only. In Expo Go (no native notifee) every entry point no-ops.
  */
 import { AppState, Platform } from 'react-native'
-import { notifee, AndroidImportance } from '@/lib/notifee'
+import { notifee, AndroidImportance, AndroidVisibility } from '@/lib/notifee'
 import { ReconnectingWs } from '@/features/realtime/ws'
 import { messageFor } from '@/lib/alertMessages'
 import { api, setAccessToken } from '@/services/api'
@@ -33,7 +33,10 @@ import type { RealtimeEvent } from '@/types'
 // channel; the actual order alerts reuse the same high-importance channel id as
 // the foreground in-app alerts so both look identical.
 const SERVICE_CHANNEL = 'reva-service'
-const ALERT_CHANNEL = 'staff-v2'
+// Dedicated id (NOT the foreground 'staff-v2' channel): Android channel settings
+// are immutable after creation, so a separate channel lets us guarantee the
+// lock-screen config below regardless of what useStaffAlerts created first.
+const ALERT_CHANNEL = 'staff-alert-v1'
 
 // Access tokens expire after 5 min (ACCESS_TOKEN_EXPIRE_MINUTES); refresh ahead
 // of that so a WS reconnect never presents a stale token (which the server would
@@ -57,8 +60,13 @@ async function ensureChannels(): Promise<void> {
   await notifee.createChannel({
     id: ALERT_CHANNEL,
     name: 'Staff alerts',
+    // HIGH → heads-up popup + sound even on the lock screen; PUBLIC → the order
+    // details are shown on the lock screen (not hidden); vibration for eyes-off.
     importance: AndroidImportance.HIGH,
+    visibility: AndroidVisibility?.PUBLIC,
     sound: 'default',
+    vibration: true,
+    vibrationPattern: [300, 500],
   })
 }
 
@@ -86,7 +94,12 @@ function postAlert(ev: RealtimeEvent): void {
       android: {
         channelId: ALERT_CHANNEL,
         importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility?.PUBLIC,
         pressAction: { id: 'default' },
+        // Wake and light up a locked screen (like an alarm/incoming call) so an
+        // order isn't missed with the phone face-down. Requires the
+        // USE_FULL_SCREEN_INTENT permission (added by the config plugin).
+        fullScreenAction: { id: 'default' },
       },
     })
     .catch(() => {

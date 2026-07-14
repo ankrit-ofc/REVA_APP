@@ -28,6 +28,10 @@ const PERMISSIONS = [
   'android.permission.FOREGROUND_SERVICE_SPECIAL_USE',
   'android.permission.POST_NOTIFICATIONS',
   'android.permission.WAKE_LOCK',
+  // Lets an order alert wake/illuminate a locked screen via a full-screen intent
+  // (alarm/call style). On Android 14+ the OS may require a one-time grant; when
+  // not granted the notification degrades to a normal heads-up alert.
+  'android.permission.USE_FULL_SCREEN_INTENT',
 ]
 
 function ensureToolsNamespace(manifest) {
@@ -74,12 +78,32 @@ function overrideNotifeeService(manifest) {
   })
 }
 
+/**
+ * Allow the main activity to appear over the keyguard and turn the screen on, so
+ * a full-screen order alert can wake a locked device. These are inert for normal
+ * launches from the launcher — they only take effect for the full-screen intent.
+ */
+function configureMainActivity(manifest) {
+  const application = manifest.application && manifest.application[0]
+  if (!application || !application.activity) return
+  const main = application.activity.find((a) =>
+    (a['intent-filter'] || []).some((f) =>
+      (f.action || []).some((ac) => ac.$ && ac.$['android:name'] === 'android.intent.action.MAIN'),
+    ),
+  )
+  if (!main) return
+  main.$ = main.$ || {}
+  main.$['android:showWhenLocked'] = 'true'
+  main.$['android:turnScreenOn'] = 'true'
+}
+
 module.exports = function withStaffForegroundService(config) {
   return withAndroidManifest(config, (cfg) => {
     const manifest = cfg.modResults.manifest
     ensureToolsNamespace(manifest)
     addPermissions(manifest)
     overrideNotifeeService(manifest)
+    configureMainActivity(manifest)
     return cfg
   })
 }
