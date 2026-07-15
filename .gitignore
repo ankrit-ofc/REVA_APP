@@ -13,6 +13,11 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
+
+# Firebase service-account keys — SECRET, never commit. (google-services.json,
+# the app's public Firebase config, is intentionally NOT ignored.)
+*-firebase-adminsdk-*.json
+**/serviceAccount*.json
 *.p8
 *.p12
 *.key
