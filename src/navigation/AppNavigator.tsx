@@ -1,7 +1,9 @@
+import { View } from 'react-native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { Ionicons } from '@expo/vector-icons'
 import { LogoutButton } from '@/components/LogoutButton'
+import { RealtimeBanner } from '@/components/RealtimeBanner'
 import { useAuth } from '@/features/auth/useAuth'
 import { useStaffAlerts } from '@/lib/useStaffAlerts'
 import type { AdminStackParamList } from './types'
@@ -151,19 +153,32 @@ export function AppNavigator() {
   const { role } = useAuth()
   useStaffAlerts()
 
+  let surface
   switch (role) {
     case 'SUPERADMIN':
-      return <SuperadminNavigator />
+      surface = <SuperadminNavigator />
+      break
     case 'ADMIN':
-      return <AdminNavigator />
+      surface = <AdminNavigator />
+      break
     case 'KITCHEN':
-      return <KitchenNavigator />
+      surface = <KitchenNavigator />
+      break
     case 'WAITER':
-      return <WaiterNavigator />
+      surface = <WaiterNavigator />
+      break
     case 'COUNTER_DISPLAY':
-      return <DisplayNavigator />
+      surface = <DisplayNavigator />
+      break
     case 'COUNTER':
     default:
-      return <CounterNavigator />
+      surface = <CounterNavigator />
   }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <RealtimeBanner />
+      {surface}
+    </View>
+  )
 }
