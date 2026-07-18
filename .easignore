@@ -1,0 +1,62 @@
+# EAS Build archive ignore rules.
+#
+# WHY THIS FILE EXISTS: when present, .easignore REPLACES .gitignore for the
+# EAS upload archive. google-services.json is deliberately gitignored (so no
+# future copy is committed by accident) but MUST be uploaded to EAS Build —
+# so this file is .gitignore minus that one entry. If you edit .gitignore,
+# mirror the change here, and NEVER remove the secret entries below
+# (fcm-key.json, *.jks, credentials.json, .env) or they will be uploaded to
+# the build servers.
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+
+# Firebase service-account keys — SECRET, never upload
+*-firebase-adminsdk-*.json
+**/serviceAccount*.json
+*.p8
+*.p12
+*.key
+*.mobileprovision
+fcm-key.json
+credentials.json
+credentials/
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+.env
+
+# export/bundle checks
+.expo-export-check/
+
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+
+# NOTE: google-services.json is intentionally ABSENT here so EAS uploads it.

@@ -35,7 +35,7 @@ async function ensureChannel(): Promise<void> {
   if (!Notifications || Platform.OS !== 'android') return
   await Notifications.setNotificationChannelAsync(PUSH_CHANNEL_ID, {
     name: 'Order alerts',
-    importance: Notifications.AndroidImportance.HIGH,
+    importance: Notifications.AndroidImportance.MAX,
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     sound: 'default',
     vibrationPattern: [300, 500],
