@@ -4,13 +4,21 @@
  * web client; only the base URL source differs (build-time env, not window.location).
  *
  * Security invariants:
- * - The token is always read from the in-memory store at connect time.
- * - restaurant_id / tenant scope comes from the verified token, never from a
- *   client-chosen channel name.
+ * - Long-lived credentials NEVER appear in the WS URL. Each connect attempt
+ *   (including reconnects) first POSTs to /auth/ws-ticket — authenticated via
+ *   the normal Bearer interceptor — and receives a short-lived single-use
+ *   ticket, which is the only thing in the query string. The backend rejects
+ *   raw ?token= connections with close code 1008.
+ * - restaurant_id / tenant scope comes from the server-side ticket, never from
+ *   a client-chosen channel name.
  * - WS close code 1008 (Policy Violation) means the server rejected our
- *   credentials; we do NOT reconnect in that case.
+ *   credentials. Because a single-use ticket can expire in transit (e.g. a
+ *   connect delayed past its 60s TTL), one refresh-and-retry is allowed per
+ *   established connection; a second consecutive 1008 is treated as fatal —
+ *   we stop reconnecting and report it via onFatal so the UI can offer a
+ *   manual retry instead of hammering the server.
  */
-import { getAccessToken } from '@/services/api'
+import { api, getAccessToken } from '@/services/api'
 import { WS_BASE_URL } from '@/lib/config'
 
 export type MessageHandler = (data: unknown) => void
@@ -19,6 +27,8 @@ export interface WsConfig {
   onMessage: MessageHandler
   onOpen?: () => void
   onClose?: (wasClean: boolean) => void
+  /** The server rejected our credentials twice in a row; reconnection stopped. */
+  onFatal?: () => void
 }
 
 const WS_POLICY_VIOLATION = 1008
@@ -32,34 +42,59 @@ const MAX_BACKOFF_MS = 30_000
 const PING_INTERVAL_MS = 20_000
 const STALE_MS = 45_000
 
-function buildStaffWsUrl(): string | null {
-  const token = getAccessToken()
-  if (!token) return null
-  return `${WS_BASE_URL}/ws/staff?token=${encodeURIComponent(token)}`
+/**
+ * Fetch a fresh single-use ticket and build the WS URL.
+ * Returns null when no access token is available yet (caller recreates later);
+ * throws when the ticket request itself fails (caller retries with backoff).
+ */
+export async function buildStaffWsUrl(): Promise<string | null> {
+  if (!getAccessToken()) return null
+
+  const response = await api.post('/auth/ws-ticket')
+  const ticket: unknown = (response.data as { ticket?: unknown } | null)?.ticket
+  if (typeof ticket !== 'string' || ticket.length === 0) {
+    throw new Error('Malformed ws-ticket response')
+  }
+  return `${WS_BASE_URL}/ws/staff?ticket=${encodeURIComponent(ticket)}`
 }
 
 export class ReconnectingWs {
   private ws: WebSocket | null = null
   private destroyed = false
+  private fatal = false
   private retryDelayMs = 1_000
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private pingTimer: ReturnType<typeof setInterval> | null = null
   private lastActivity = 0
+  /** Set after a 1008 close; a second 1008 without a successful open is fatal. */
+  private policyRetryUsed = false
 
   constructor(private readonly config: WsConfig) {
     this.connect()
   }
 
   private connect(): void {
-    if (this.destroyed) return
+    if (this.destroyed || this.fatal) return
+    void this.connectAsync()
+  }
 
-    const url = buildStaffWsUrl()
+  private async connectAsync(): Promise<void> {
+    let url: string | null
+    try {
+      url = await buildStaffWsUrl()
+    } catch {
+      // Ticket fetch failed (network / backend restart) — retry with backoff.
+      this.scheduleReconnect()
+      return
+    }
+    if (this.destroyed || this.fatal) return
     if (!url) return // token not yet available; caller should recreate when ready
 
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
       this.retryDelayMs = 1_000
+      this.policyRetryUsed = false
       this.lastActivity = Date.now()
       this.startHeartbeat()
       this.config.onOpen?.()
@@ -81,17 +116,33 @@ export class ReconnectingWs {
     this.ws.onclose = (event) => {
       this.stopHeartbeat()
       this.config.onClose?.(event.code === 1000)
-      if (this.destroyed || event.code === WS_POLICY_VIOLATION) return
-      // Exponential backoff reconnect.
-      this.retryTimer = setTimeout(() => {
-        this.retryDelayMs = Math.min(this.retryDelayMs * 2, MAX_BACKOFF_MS)
-        this.connect()
-      }, this.retryDelayMs)
+      if (this.destroyed) return
+      if (event.code === WS_POLICY_VIOLATION) {
+        if (this.policyRetryUsed) {
+          // Second consecutive rejection: our credentials are genuinely refused.
+          this.fatal = true
+          this.config.onFatal?.()
+          return
+        }
+        // First rejection may just be an expired single-use ticket — retry once
+        // with a fresh ticket (fetched by the next connect) after a backoff.
+        this.policyRetryUsed = true
+      }
+      this.scheduleReconnect()
     }
 
     this.ws.onerror = () => {
       // onclose fires after onerror; reconnect is handled there.
     }
+  }
+
+  /** Exponential-backoff reconnect (shared by onclose and ticket-fetch failures). */
+  private scheduleReconnect(): void {
+    if (this.destroyed || this.fatal) return
+    this.retryTimer = setTimeout(() => {
+      this.retryDelayMs = Math.min(this.retryDelayMs * 2, MAX_BACKOFF_MS)
+      this.connect()
+    }, this.retryDelayMs)
   }
 
   /** Ping periodically and force-reconnect a socket that has gone silent. */
