@@ -27,11 +27,11 @@
     "plugins": [
       "expo-secure-store"
     ],
+    "owner": "ank.ofc",
     "extra": {
       "eas": {
-        "projectId": "7409e56c-bee6-43ce-98d7-a5e75883ecc3"
+        "projectId": "9b615b58-fa61-4167-8fbd-0ab45d633e18"
       }
-    },
-    "owner": "lan_tian"
+    }
   }
 }

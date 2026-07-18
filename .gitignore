@@ -48,3 +48,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Migrated-project secrets — never commit
+google-services.json
+credentials.json
+
+fcm-key.json
