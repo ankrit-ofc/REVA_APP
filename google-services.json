@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "523383180191",
-    "project_id": "reva-15efb",
-    "storage_bucket": "reva-15efb.firebasestorage.app"
+    "project_number": "1066669236604",
+    "project_id": "reva-tap",
+    "storage_bucket": "reva-tap.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:523383180191:android:5e3640a24cc76b07b5cbaa",
+        "mobilesdk_app_id": "1:1066669236604:android:474db13db977b30c3304f9",
         "android_client_info": {
           "package_name": "com.reva.revamobile"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDn5DcXJgfuF9kYB8syE558CUNtLheNJkM"
+          "current_key": "AIzaSyCD-C9Ms3MmDiY89HXuYrfKo0xlg0XmAhU"
         }
       ],
       "services": {
