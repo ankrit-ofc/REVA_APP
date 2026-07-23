@@ -16,6 +16,25 @@ import {
   type OrderResponse,
 } from '@/lib/schemas/order'
 
+/**
+ * Optimistic cache patches: both waiter queues only contain items the pending
+ * mutation moves OUT of them (/waiter/ready excludes SERVED; /pending-approvals
+ * holds only PENDING_APPROVAL), so instant feedback = removing from the cached
+ * list. Rolled back via `patch.undo()` on failure; the `invalidatesTags`
+ * refetch after success remains the server-truth reconciliation.
+ */
+function removeReadyItem(itemId: string) {
+  return waiterApi.util.updateQueryData('getReadyItems', undefined, (draft) =>
+    draft.filter((i) => i.id !== itemId),
+  )
+}
+
+function removePendingOrder(orderId: string) {
+  return waiterApi.util.updateQueryData('getPendingApprovals', undefined, (draft) =>
+    draft.filter((i) => i.order_id !== orderId),
+  )
+}
+
 export const waiterApi = createApi({
   reducerPath: 'waiterApi',
   baseQuery: axiosBaseQuery,
@@ -53,6 +72,14 @@ export const waiterApi = createApi({
       query: (itemId) => ({ method: 'POST', url: `/waiter/items/${itemId}/served` }),
       transformResponse: parseWith(orderItemResponseSchema),
       invalidatesTags: ['WaiterQueue'],
+      async onQueryStarted(itemId, { dispatch, queryFulfilled }) {
+        const patch = dispatch(removeReadyItem(itemId))
+        try {
+          await queryFulfilled
+        } catch {
+          patch.undo()
+        }
+      },
     }),
     markMealFinished: builder.mutation<OrderResponse, string>({
       query: (orderId) => ({
@@ -79,6 +106,14 @@ export const waiterApi = createApi({
       }),
       transformResponse: parseWith(orderResponseSchema),
       invalidatesTags: ['WaiterOpenOrders', 'WaiterPending'],
+      async onQueryStarted({ orderId }, { dispatch, queryFulfilled }) {
+        const patch = dispatch(removePendingOrder(orderId))
+        try {
+          await queryFulfilled
+        } catch {
+          patch.undo()
+        }
+      },
     }),
     rejectOrderItems: builder.mutation<OrderResponse, { orderId: string; reason?: string }>({
       query: ({ orderId, reason }) => ({
@@ -89,6 +124,14 @@ export const waiterApi = createApi({
       }),
       transformResponse: parseWith(orderResponseSchema),
       invalidatesTags: ['WaiterOpenOrders', 'WaiterPending'],
+      async onQueryStarted({ orderId }, { dispatch, queryFulfilled }) {
+        const patch = dispatch(removePendingOrder(orderId))
+        try {
+          await queryFulfilled
+        } catch {
+          patch.undo()
+        }
+      },
     }),
   }),
 })

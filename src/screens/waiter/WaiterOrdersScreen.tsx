@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from 'react'
-import { ScrollView, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useMemo, useState } from 'react'
+import { Alert, ScrollView, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
@@ -13,6 +13,7 @@ import {
   useMarkMealFinishedMutation,
 } from '@/features/waiter/waiterApi'
 import { useStaffRealtime } from '@/features/realtime/useRealtime'
+import { errDetail } from '@/lib/errors'
 import type { QueueItemResponse } from '@/lib/schemas/workflow'
 import { colors, spacing } from '@/theme'
 
@@ -35,9 +36,39 @@ const REFETCH_EVENTS = new Set([
 export function WaiterOrdersScreen() {
   const pendingQ = useGetPendingApprovalsQuery(undefined, { pollingInterval: 15_000 })
   const openQ = useGetOpenOrdersQuery(undefined, { pollingInterval: 15_000 })
-  const [approve, { isLoading: approveBusy }] = useApproveOrderItemsMutation()
-  const [reject, { isLoading: rejectBusy }] = useRejectOrderItemsMutation()
+  const [approve] = useApproveOrderItemsMutation()
+  const [reject] = useRejectOrderItemsMutation()
   const [markMealFinished] = useMarkMealFinishedMutation()
+
+  // Per-order in-flight decision — only the tapped button spins (its sibling is
+  // disabled so one order can't get both decisions); other cards stay tappable.
+  const [pendingByOrder, setPendingByOrder] = useState<ReadonlyMap<string, 'approve' | 'reject'>>(
+    new Map(),
+  )
+
+  // The cache patch in waiterApi removes the whole batch card instantly; on
+  // failure the patch is undone (card snaps back) and the alert makes the
+  // failure explicit.
+  const decide = useCallback(
+    async (orderId: string, action: 'approve' | 'reject') => {
+      setPendingByOrder((prev) => new Map(prev).set(orderId, action))
+      try {
+        await (action === 'approve' ? approve({ orderId }) : reject({ orderId })).unwrap()
+      } catch (e) {
+        Alert.alert(
+          action === 'approve' ? 'Approval failed' : 'Rejection failed',
+          `${errDetail(e)}\n\nThe order was NOT ${action === 'approve' ? 'approved' : 'rejected'} — please try again.`,
+        )
+      } finally {
+        setPendingByOrder((prev) => {
+          const next = new Map(prev)
+          next.delete(orderId)
+          return next
+        })
+      }
+    },
+    [approve, reject],
+  )
 
   useStaffRealtime(
     useCallback(
@@ -70,7 +101,6 @@ export function WaiterOrdersScreen() {
   }, [pendingQ.data])
 
   const open = openQ.data ?? []
-  const busy = approveBusy || rejectBusy
   const loading = pendingQ.isLoading || openQ.isLoading
 
   return (
@@ -112,8 +142,9 @@ export function WaiterOrdersScreen() {
                   <Button
                     title="Approve"
                     variant="success"
-                    disabled={busy}
-                    onPress={() => approve({ orderId: g.orderId })}
+                    loading={pendingByOrder.get(g.orderId) === 'approve'}
+                    disabled={pendingByOrder.get(g.orderId) === 'reject'}
+                    onPress={() => decide(g.orderId, 'approve')}
                   />
                 </View>
                 <View style={{ width: spacing.sm }} />
@@ -121,8 +152,9 @@ export function WaiterOrdersScreen() {
                   <Button
                     title="Reject"
                     variant="danger"
-                    disabled={busy}
-                    onPress={() => reject({ orderId: g.orderId })}
+                    loading={pendingByOrder.get(g.orderId) === 'reject'}
+                    disabled={pendingByOrder.get(g.orderId) === 'approve'}
+                    onPress={() => decide(g.orderId, 'reject')}
                   />
                 </View>
               </View>

@@ -13,22 +13,16 @@ const PREF_KEY = 'staff_alerts_enabled'
 // settings (importance, lock-screen visibility) requires a new channel id.
 const CHANNEL_ID = 'staff-v2'
 
-// Foreground display handler. A remote PUSH arriving while the app is in front is
-// a duplicate of the in-app WS alert below, so it's suppressed here; local
-// (scheduled) alerts still show. In the background/closed the OS shows the push
-// directly (this handler doesn't run then). Skipped in Expo Go.
+// Foreground display handler: show every notification — remote pushes included —
+// with banner and sound while the app is in front. In the background/closed the
+// OS shows the push directly (this handler doesn't run then). Skipped in Expo Go.
 Notifications?.setNotificationHandler({
-  handleNotification: async (notification) => {
-    const isPush =
-      (notification.request.trigger as { type?: string } | null)?.type === 'push'
-    const show = !isPush
-    return {
-      shouldShowBanner: show,
-      shouldShowList: show,
-      shouldPlaySound: show,
-      shouldSetBadge: false,
-    }
-  },
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
 })
 
 /**
