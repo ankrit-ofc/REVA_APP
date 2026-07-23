@@ -7,6 +7,10 @@ STAFF MOBILE APP (React Native/Expo). Ships via `eas build -p android --profile 
 NOT deploy.sh. NOT revatap.com web. The web admin repo is separate (Multi_Tenant_QR_Resturant_Management-main).
 Staff-facing features are built HERE.
 
+- GitHub remote: `origin` = https://github.com/ankrit-ofc/REVA_APP.git (migrated 2026-07-23 from the previous developer's StormDraco/reva-tap, which is retained as the `old-origin` remote as a fallback — do not delete it).
+- Default branch is `master`, NOT `main`. Do not rename it.
+- The Firebase project id is also `reva-tap` (google-services.json). That is unrelated to the old GitHub repo name — never "fix" it during a remote migration.
+
 ## Settled decisions — do not reverse without explicit instruction from Ankrit
 - Foreground pushes: SHOW (banner+sound even with app open). A missed order costs more than a duplicate alert.
 - Push channel: app CHANNEL_ID ('staff-v2', useStaffAlerts.ts) MUST equal backend _ANDROID_CHANNEL (push_service.py). Changing either alone silently breaks lock-screen alerts.
