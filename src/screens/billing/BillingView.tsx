@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { Field } from '@/components/Field'
@@ -15,16 +15,23 @@ import {
   useQuickBillMutation,
   useGenerateInvoiceMutation,
   useGetInvoiceQuery,
+  useGetPaymentQrQuery,
   usePayInvoiceMutation,
   useManualOverrideMutation,
   type CounterPayMethod,
 } from '@/features/counter/counterApi'
 import { useStaffRealtime } from '@/features/realtime/useRealtime'
+import { API_BASE_URL } from '@/lib/config'
 import { errDetail } from '@/lib/errors'
 import { formatMoney, newIdempotencyKey } from '@/lib/money'
 import type { CounterOrderSummary } from '@/lib/schemas/order'
 import type { Role } from '@/types'
 import { colors, radius, spacing } from '@/theme'
+
+/** Resolves a possibly-relative media path from the backend to an absolute URL. */
+function mediaUri(url: string): string {
+  return url.startsWith('http') ? url : `${API_BASE_URL}${url}`
+}
 
 const CURRENCY = 'NPR'
 const PAY_METHODS: CounterPayMethod[] = ['CASH', 'CARD', 'COUNTER_WALLET']
@@ -53,6 +60,7 @@ export function BillingView({ role }: { role: Role | null }) {
 function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
   const openQ = useGetCounterOpenOrdersQuery(undefined, { pollingInterval: 15_000 })
   const queueQ = useGetCounterOrdersQuery(undefined, { pollingInterval: 15_000 })
+  const qrQ = useGetPaymentQrQuery()
   const [markMealFinished] = useMarkMealFinishedMutation()
   const [startBilling] = useStartBillingMutation()
   const [reopenOrder, { isLoading: reopenBusy }] = useReopenCounterOrderMutation()
@@ -67,6 +75,7 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
   const [closeTarget, setCloseTarget] = useState<CounterOrderSummary | null>(null)
   const [billTarget, setBillTarget] = useState<CounterOrderSummary | null>(null)
   const [billErr, setBillErr] = useState<string | null>(null)
+  const [showQr, setShowQr] = useState(false)
   // Stable idempotency key per Bill & Clear attempt — reused if the confirm is retried.
   const billKey = useRef('')
   const [err, setErr] = useState<string | null>(null)
@@ -144,6 +153,13 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
       ListHeaderComponent={
         <View>
           {err ? <Text style={styles.err}>{err}</Text> : null}
+          {qrQ.data?.payment_qr_url ? (
+            <Button
+              title="Show payment QR"
+              variant="secondary"
+              onPress={() => setShowQr(true)}
+            />
+          ) : null}
           {open.length > 0 ? (
             <>
               <Text style={styles.section}>Open Tables</Text>
@@ -157,6 +173,11 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
                       {o.item_count} item{o.item_count !== 1 ? 's' : ''}
                     </Text>
                   </View>
+                  {(o.items ?? []).map((it, idx) => (
+                    <Text key={`${o.id}-${idx}`} style={styles.product}>
+                      {it.quantity}× {it.name}
+                    </Text>
+                  ))}
                   {o.bill_requested ? (
                     <Text style={styles.billRequested}>🔔 Bill requested</Text>
                   ) : (
@@ -311,6 +332,27 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
         onConfirm={confirmBill}
         onClose={() => setBillTarget(null)}
       />
+      <Modal
+        visible={showQr && !!qrQ.data?.payment_qr_url}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowQr(false)}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.qrModal}>
+            <Text style={styles.modalTitle}>Scan to pay</Text>
+            {qrQ.data?.payment_qr_url ? (
+              <Image
+                source={{ uri: mediaUri(qrQ.data.payment_qr_url) }}
+                style={styles.qrImage}
+                resizeMode="contain"
+              />
+            ) : null}
+            <View style={{ height: spacing.md }} />
+            <Button title="Done" variant="secondary" onPress={() => setShowQr(false)} />
+          </View>
+        </View>
+      </Modal>
     </>
   )
 }
@@ -535,6 +577,7 @@ const styles = StyleSheet.create({
   orderNo: { fontSize: 15, fontWeight: '800', color: colors.text, marginRight: spacing.sm },
   table: { fontSize: 14, color: colors.text },
   items: { fontSize: 13, color: colors.textMuted },
+  product: { fontSize: 14, color: colors.text, marginBottom: 2 },
   muted: { fontSize: 13, color: colors.textMuted, marginTop: spacing.xs },
   billRequested: { fontSize: 13, color: colors.warning, fontWeight: '700' },
   actions: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md },
@@ -603,4 +646,11 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: spacing.xs },
   modalHint: { fontSize: 13, color: colors.textMuted, marginBottom: spacing.md },
+  qrModal: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  qrImage: { width: 260, height: 260, marginTop: spacing.md },
 })

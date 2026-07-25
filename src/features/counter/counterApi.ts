@@ -1,11 +1,14 @@
+import { z } from 'zod'
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { axiosBaseQuery } from '@/services/api'
 import { parseWith } from '@/lib/parseResponse'
 import {
   orderResponseSchema,
+  counterOrderSummarySchema,
   type CounterOrderSummary,
   type OrderResponse,
 } from '@/lib/schemas/order'
+import { paymentQrResponseSchema, type PaymentQrResponse } from '@/lib/schemas/menu'
 import {
   invoiceResponseSchema,
   receiptResponseSchema,
@@ -29,11 +32,17 @@ export const counterApi = createApi({
   endpoints: (builder) => ({
     getCounterOrders: builder.query<CounterOrderSummary[], void>({
       query: () => ({ method: 'GET', url: '/counter/orders' }),
+      transformResponse: parseWith(z.array(counterOrderSummarySchema)),
       providesTags: ['CounterOrders'],
     }),
     getCounterOpenOrders: builder.query<CounterOrderSummary[], void>({
       query: () => ({ method: 'GET', url: '/counter/open-orders' }),
+      transformResponse: parseWith(z.array(counterOrderSummarySchema)),
       providesTags: ['CounterOpenOrders'],
+    }),
+    getPaymentQr: builder.query<PaymentQrResponse, void>({
+      query: () => ({ method: 'GET', url: '/counter/payment-qr' }),
+      transformResponse: parseWith(paymentQrResponseSchema),
     }),
     // Relay a manual kitchen-ticket print to the print station. No cache change —
     // printing happens on the station (worker), not in this response.
@@ -139,6 +148,7 @@ export const counterApi = createApi({
 export const {
   useGetCounterOrdersQuery,
   useGetCounterOpenOrdersQuery,
+  useGetPaymentQrQuery,
   usePrintKotMutation,
   useMarkMealFinishedMutation,
   useReopenCounterOrderMutation,
