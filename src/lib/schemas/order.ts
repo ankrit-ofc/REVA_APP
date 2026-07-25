@@ -49,6 +49,12 @@ export const placeOrderRequestSchema = z.object({
   items: z.array(orderItemCreateSchema).min(1).max(50),
 })
 
+/** One line on a billing-queue summary — enough to read the order back to a guest. */
+export const counterOrderSummaryItemSchema = z.object({
+  name: z.string(),
+  quantity: z.number().int(),
+})
+
 export const counterOrderSummarySchema = z.object({
   id: z.string().uuid(),
   order_number: z.number().int(),
@@ -59,6 +65,9 @@ export const counterOrderSummarySchema = z.object({
   bill_requested: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
+  // Non-cancelled lines (name + qty), so the Billing screen can show what was
+  // ordered. Optional so an older/omitting response never breaks parsing.
+  items: z.array(counterOrderSummaryItemSchema).optional(),
 })
 
 export type OrderItemStatus = z.infer<typeof orderItemStatusSchema>
@@ -68,4 +77,5 @@ export type OrderItemResponse = z.infer<typeof orderItemResponseSchema>
 export type OrderResponse = z.infer<typeof orderResponseSchema>
 export type OrderItemCreate = z.infer<typeof orderItemCreateSchema>
 export type PlaceOrderRequest = z.infer<typeof placeOrderRequestSchema>
+export type CounterOrderSummaryItem = z.infer<typeof counterOrderSummaryItemSchema>
 export type CounterOrderSummary = z.infer<typeof counterOrderSummarySchema>
