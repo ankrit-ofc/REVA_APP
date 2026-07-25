@@ -247,42 +247,44 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
             </>
           ) : null}
 
-          <Text style={styles.section}>Ready for Billing</Text>
+          {/*
+            "Ready for Billing" is now a DRAIN-ONLY safety net for any order still
+            in MEAL_FINISHED (e.g. in-flight at deploy time). No new tables route
+            here — both "Move to billing" buttons are hidden, so every table bills
+            through "Bill & clear" while OPEN. The discount UI is removed (discounts
+            unused); only a plain "Generate invoice" (0 discount) → pay remains so
+            leftover tables can still be cleared. Header + card render ONLY when
+            such tables exist, so nothing shows in normal operation.
+          */}
           {queue.length > 0 ? (
-            <Card>
-              <View style={styles.discountRow}>
-                <View style={styles.flex}>
-                  <Text style={styles.label}>Discount</Text>
-                  <View style={styles.toggle}>
-                    <ToggleChip
-                      label="Flat"
-                      active={discountType === 'flat'}
-                      onPress={() => setDiscountType('flat')}
-                    />
-                    <ToggleChip
-                      label="%"
-                      active={discountType === 'percent'}
-                      onPress={() => setDiscountType('percent')}
-                    />
+            <>
+              <Text style={styles.section}>Ready for Billing</Text>
+              <Card>
+                {/*
+                  Discount UI HIDDEN 2026-07-25 (discounts unused). Restore this
+                  <View style={styles.discountRow}> block to bring it back.
+                  <View style={styles.discountRow}>
+                    <View style={styles.flex}>
+                      <Text style={styles.label}>Discount</Text>
+                      <View style={styles.toggle}>
+                        <ToggleChip label="Flat" active={discountType === 'flat'} onPress={() => setDiscountType('flat')} />
+                        <ToggleChip label="%" active={discountType === 'percent'} onPress={() => setDiscountType('percent')} />
+                      </View>
+                    </View>
+                    <View style={{ width: spacing.md }} />
+                    <View style={styles.flex}>
+                      <Field label="Amount" value={discountValue} onChangeText={setDiscountValue} keyboardType="numeric" />
+                    </View>
                   </View>
-                </View>
-                <View style={{ width: spacing.md }} />
-                <View style={styles.flex}>
-                  <Field
-                    label="Amount"
-                    value={discountValue}
-                    onChangeText={setDiscountValue}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-              <Button
-                title={selectedId ? 'Generate invoice' : 'Select an order below'}
-                disabled={!selectedId}
-                loading={genBusy}
-                onPress={generate}
-              />
-            </Card>
+                */}
+                <Button
+                  title={selectedId ? 'Generate invoice' : 'Select an order below'}
+                  disabled={!selectedId}
+                  loading={genBusy}
+                  onPress={generate}
+                />
+              </Card>
+            </>
           ) : null}
         </View>
       }
@@ -314,9 +316,12 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
         />
       }
       ListFooterComponent={
-        !loading && queue.length === 0 ? (
-          <Text style={styles.muted}>No orders waiting for billing.</Text>
-        ) : null
+        // Footer "No orders waiting for billing." HIDDEN 2026-07-25 — the billing
+        // queue is drain-only now, so nothing about it shows when empty. Restore:
+        // !loading && queue.length === 0 ? (
+        //   <Text style={styles.muted}>No orders waiting for billing.</Text>
+        // ) : null
+        null
       }
     />
       <ReasonModal
