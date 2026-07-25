@@ -8,6 +8,7 @@ import { counterApi } from '@/features/counter/counterApi'
 import { counterDisplayApi } from '@/features/counterDisplay/counterDisplayApi'
 import { adminApi } from '@/features/admin/adminApi'
 import { superadminApi } from '@/features/superadmin/superadminApi'
+import { dashboardApi } from '@/features/dashboard/dashboardApi'
 
 export const store = configureStore({
   reducer: {
@@ -20,6 +21,7 @@ export const store = configureStore({
     [counterDisplayApi.reducerPath]: counterDisplayApi.reducer,
     [adminApi.reducerPath]: adminApi.reducer,
     [superadminApi.reducerPath]: superadminApi.reducer,
+    [dashboardApi.reducerPath]: dashboardApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware()
@@ -29,7 +31,8 @@ export const store = configureStore({
       .concat(counterApi.middleware)
       .concat(counterDisplayApi.middleware)
       .concat(adminApi.middleware)
-      .concat(superadminApi.middleware),
+      .concat(superadminApi.middleware)
+      .concat(dashboardApi.middleware),
 })
 
 export type RootState = ReturnType<typeof store.getState>
