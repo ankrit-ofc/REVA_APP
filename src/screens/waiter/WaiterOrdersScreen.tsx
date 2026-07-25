@@ -188,12 +188,22 @@ export function WaiterOrdersScreen() {
                   <Text style={styles.billRequested}>Bill requested</Text>
                 </View>
               ) : null}
+              {/*
+                "Move to billing" HIDDEN 2026-07-25 per request. Code intact —
+                markMealFinished hook + mutation untouched. All billing now
+                funnels through Bill & clear (OPEN + bill_requested) on the
+                Billing screen; this was the last UI path into MEAL_FINISHED, so
+                hiding it stops new "Ready for Billing" tables. Uncomment (button
+                + preceding spacer) to restore.
+              */}
+              {/*
               <View style={{ height: spacing.sm }} />
               <Button
                 title="Move to billing"
                 disabled={!o.bill_requested}
                 onPress={() => markMealFinished(o.id)}
               />
+              */}
             </Card>
           ))
         )}

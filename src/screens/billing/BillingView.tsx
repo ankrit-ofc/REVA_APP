@@ -247,42 +247,44 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
             </>
           ) : null}
 
-          <Text style={styles.section}>Ready for Billing</Text>
+          {/*
+            "Ready for Billing" is now a DRAIN-ONLY safety net for any order still
+            in MEAL_FINISHED (e.g. in-flight at deploy time). No new tables route
+            here — both "Move to billing" buttons are hidden, so every table bills
+            through "Bill & clear" while OPEN. The discount UI is removed (discounts
+            unused); only a plain "Generate invoice" (0 discount) → pay remains so
+            leftover tables can still be cleared. Header + card render ONLY when
+            such tables exist, so nothing shows in normal operation.
+          */}
           {queue.length > 0 ? (
-            <Card>
-              <View style={styles.discountRow}>
-                <View style={styles.flex}>
-                  <Text style={styles.label}>Discount</Text>
-                  <View style={styles.toggle}>
-                    <ToggleChip
-                      label="Flat"
-                      active={discountType === 'flat'}
-                      onPress={() => setDiscountType('flat')}
-                    />
-                    <ToggleChip
-                      label="%"
-                      active={discountType === 'percent'}
-                      onPress={() => setDiscountType('percent')}
-                    />
+            <>
+              <Text style={styles.section}>Ready for Billing</Text>
+              <Card>
+                {/*
+                  Discount UI HIDDEN 2026-07-25 (discounts unused). Restore this
+                  <View style={styles.discountRow}> block to bring it back.
+                  <View style={styles.discountRow}>
+                    <View style={styles.flex}>
+                      <Text style={styles.label}>Discount</Text>
+                      <View style={styles.toggle}>
+                        <ToggleChip label="Flat" active={discountType === 'flat'} onPress={() => setDiscountType('flat')} />
+                        <ToggleChip label="%" active={discountType === 'percent'} onPress={() => setDiscountType('percent')} />
+                      </View>
+                    </View>
+                    <View style={{ width: spacing.md }} />
+                    <View style={styles.flex}>
+                      <Field label="Amount" value={discountValue} onChangeText={setDiscountValue} keyboardType="numeric" />
+                    </View>
                   </View>
-                </View>
-                <View style={{ width: spacing.md }} />
-                <View style={styles.flex}>
-                  <Field
-                    label="Amount"
-                    value={discountValue}
-                    onChangeText={setDiscountValue}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-              <Button
-                title={selectedId ? 'Generate invoice' : 'Select an order below'}
-                disabled={!selectedId}
-                loading={genBusy}
-                onPress={generate}
-              />
-            </Card>
+                */}
+                <Button
+                  title={selectedId ? 'Generate invoice' : 'Select an order below'}
+                  disabled={!selectedId}
+                  loading={genBusy}
+                  onPress={generate}
+                />
+              </Card>
+            </>
           ) : null}
         </View>
       }
@@ -314,9 +316,12 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
         />
       }
       ListFooterComponent={
-        !loading && queue.length === 0 ? (
-          <Text style={styles.muted}>No orders waiting for billing.</Text>
-        ) : null
+        // Footer "No orders waiting for billing." HIDDEN 2026-07-25 — the billing
+        // queue is drain-only now, so nothing about it shows when empty. Restore:
+        // !loading && queue.length === 0 ? (
+        //   <Text style={styles.muted}>No orders waiting for billing.</Text>
+        // ) : null
+        null
       }
     />
       <ReasonModal
@@ -445,27 +450,49 @@ function MethodModal({
 // ── Itemized receipt (read-only, after Bill & clear) ──────────────────────────
 
 /**
- * Read-only itemized receipt shown after a successful Bill & clear. The payment
- * has ALREADY been recorded and the table cleared by quickBill before this
- * opens — so a receipt-fetch failure is never treated as a billing failure; it
- * degrades to a "payment recorded, receipt unavailable" note.
+ * Read-only itemized receipt, shared by two contexts (the itemized lines +
+ * totals are identical in both; only the header and QR differ):
+ *  - `variant="billing"` (default): shown after a successful Bill & clear. The
+ *    payment is ALREADY recorded and the table cleared by quickBill before this
+ *    opens, so a receipt-fetch failure is never treated as a billing failure —
+ *    it degrades to a "payment recorded, receipt unavailable" note. Shows the
+ *    "✓ Payment recorded" header and the payment QR.
+ *  - `variant="history"`: browsing a past order from Order History. Neutral
+ *    "STATUS · table" header, no QR (the order is already closed).
  */
-function ReceiptModal({ invoiceId, onClose }: { invoiceId: string | null; onClose: () => void }) {
+export function ReceiptModal({
+  invoiceId,
+  onClose,
+  variant = 'billing',
+}: {
+  invoiceId: string | null
+  onClose: () => void
+  variant?: 'billing' | 'history'
+}) {
   const { data, isLoading, isError } = useGetReceiptQuery(invoiceId ?? '', { skip: !invoiceId })
   const qrQ = useGetPaymentQrQuery()
   const unavailable = isError || (!isLoading && !data)
+  const isBilling = variant === 'billing'
 
   return (
     <Modal visible={!!invoiceId} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.receiptModal}>
-          <Text style={styles.paidText}>✓ Payment recorded</Text>
+          {isBilling ? (
+            <Text style={styles.paidText}>✓ Payment recorded</Text>
+          ) : (
+            <Text style={styles.modalTitle}>
+              {data ? `${data.status} · ${data.table_name}` : 'Receipt'}
+            </Text>
+          )}
           {isLoading ? (
             <View style={styles.receiptLoading}>
               <ActivityIndicator color={colors.primary} />
             </View>
           ) : unavailable ? (
-            <Text style={styles.muted}>Receipt unavailable — the payment was recorded.</Text>
+            <Text style={styles.muted}>
+              {isBilling ? 'Receipt unavailable — the payment was recorded.' : 'Receipt unavailable.'}
+            </Text>
           ) : data ? (
             <ScrollView style={styles.receiptScroll}>
               <Text style={styles.receiptHead}>
@@ -490,7 +517,7 @@ function ReceiptModal({ invoiceId, onClose }: { invoiceId: string | null; onClos
               ) : null}
               <Row label="Tax" value={formatMoney(data.tax_total, data.currency)} />
               <Row label="TOTAL" value={formatMoney(data.total, data.currency)} bold />
-              {qrQ.data?.payment_qr_url ? (
+              {isBilling && qrQ.data?.payment_qr_url ? (
                 <View style={styles.receiptQr}>
                   <Text style={styles.label}>Scan to pay</Text>
                   <Image
