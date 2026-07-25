@@ -20,6 +20,7 @@ function tabIcon(name: IoniconName) {
 
 import { KitchenScreen } from '@/screens/kitchen/KitchenScreen'
 import { TablesScreen as ActiveTablesScreen } from '@/screens/tables/TablesScreen'
+import { OrderHistoryScreen } from '@/screens/history/OrderHistoryScreen'
 import { WaiterCallsScreen } from '@/screens/waiter/WaiterCallsScreen'
 import { WaiterReadyScreen } from '@/screens/waiter/WaiterReadyScreen'
 import { WaiterOrdersScreen } from '@/screens/waiter/WaiterOrdersScreen'
@@ -100,6 +101,11 @@ function WaiterNavigator() {
         component={WaiterBillingScreen}
         options={{ title: 'Billing', tabBarIcon: tabIcon('card-outline') }}
       />
+      <WaiterTabs.Screen
+        name="History"
+        component={OrderHistoryScreen}
+        options={{ title: 'History', tabBarIcon: tabIcon('time-outline') }}
+      />
     </WaiterTabs.Navigator>
   )
 }
@@ -123,6 +129,11 @@ function CounterNavigator() {
         name="Display"
         component={CounterDisplayScreen}
         options={{ title: 'Display', tabBarIcon: tabIcon('tv-outline') }}
+      />
+      <CounterTabs.Screen
+        name="History"
+        component={OrderHistoryScreen}
+        options={{ title: 'History', tabBarIcon: tabIcon('time-outline') }}
       />
     </CounterTabs.Navigator>
   )

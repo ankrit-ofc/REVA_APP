@@ -445,27 +445,49 @@ function MethodModal({
 // ── Itemized receipt (read-only, after Bill & clear) ──────────────────────────
 
 /**
- * Read-only itemized receipt shown after a successful Bill & clear. The payment
- * has ALREADY been recorded and the table cleared by quickBill before this
- * opens — so a receipt-fetch failure is never treated as a billing failure; it
- * degrades to a "payment recorded, receipt unavailable" note.
+ * Read-only itemized receipt, shared by two contexts (the itemized lines +
+ * totals are identical in both; only the header and QR differ):
+ *  - `variant="billing"` (default): shown after a successful Bill & clear. The
+ *    payment is ALREADY recorded and the table cleared by quickBill before this
+ *    opens, so a receipt-fetch failure is never treated as a billing failure —
+ *    it degrades to a "payment recorded, receipt unavailable" note. Shows the
+ *    "✓ Payment recorded" header and the payment QR.
+ *  - `variant="history"`: browsing a past order from Order History. Neutral
+ *    "STATUS · table" header, no QR (the order is already closed).
  */
-function ReceiptModal({ invoiceId, onClose }: { invoiceId: string | null; onClose: () => void }) {
+export function ReceiptModal({
+  invoiceId,
+  onClose,
+  variant = 'billing',
+}: {
+  invoiceId: string | null
+  onClose: () => void
+  variant?: 'billing' | 'history'
+}) {
   const { data, isLoading, isError } = useGetReceiptQuery(invoiceId ?? '', { skip: !invoiceId })
   const qrQ = useGetPaymentQrQuery()
   const unavailable = isError || (!isLoading && !data)
+  const isBilling = variant === 'billing'
 
   return (
     <Modal visible={!!invoiceId} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.receiptModal}>
-          <Text style={styles.paidText}>✓ Payment recorded</Text>
+          {isBilling ? (
+            <Text style={styles.paidText}>✓ Payment recorded</Text>
+          ) : (
+            <Text style={styles.modalTitle}>
+              {data ? `${data.status} · ${data.table_name}` : 'Receipt'}
+            </Text>
+          )}
           {isLoading ? (
             <View style={styles.receiptLoading}>
               <ActivityIndicator color={colors.primary} />
             </View>
           ) : unavailable ? (
-            <Text style={styles.muted}>Receipt unavailable — the payment was recorded.</Text>
+            <Text style={styles.muted}>
+              {isBilling ? 'Receipt unavailable — the payment was recorded.' : 'Receipt unavailable.'}
+            </Text>
           ) : data ? (
             <ScrollView style={styles.receiptScroll}>
               <Text style={styles.receiptHead}>
@@ -490,7 +512,7 @@ function ReceiptModal({ invoiceId, onClose }: { invoiceId: string | null; onClos
               ) : null}
               <Row label="Tax" value={formatMoney(data.tax_total, data.currency)} />
               <Row label="TOTAL" value={formatMoney(data.total, data.currency)} bold />
-              {qrQ.data?.payment_qr_url ? (
+              {isBilling && qrQ.data?.payment_qr_url ? (
                 <View style={styles.receiptQr}>
                   <Text style={styles.label}>Scan to pay</Text>
                   <Image
