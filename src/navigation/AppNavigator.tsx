@@ -19,6 +19,7 @@ function tabIcon(name: IoniconName) {
 }
 
 import { KitchenScreen } from '@/screens/kitchen/KitchenScreen'
+import { TablesScreen as ActiveTablesScreen } from '@/screens/tables/TablesScreen'
 import { WaiterCallsScreen } from '@/screens/waiter/WaiterCallsScreen'
 import { WaiterReadyScreen } from '@/screens/waiter/WaiterReadyScreen'
 import { WaiterOrdersScreen } from '@/screens/waiter/WaiterOrdersScreen'
@@ -85,6 +86,11 @@ function WaiterNavigator() {
       />
       */}
       <WaiterTabs.Screen
+        name="Tables"
+        component={ActiveTablesScreen}
+        options={{ title: 'Tables', tabBarIcon: tabIcon('grid-outline') }}
+      />
+      <WaiterTabs.Screen
         name="Orders"
         component={WaiterOrdersScreen}
         options={{ title: 'Orders', tabBarIcon: tabIcon('receipt-outline') }}
@@ -107,6 +113,11 @@ function CounterNavigator() {
         name="Billing"
         component={CounterBillingScreen}
         options={{ title: 'Billing', tabBarIcon: tabIcon('card-outline') }}
+      />
+      <CounterTabs.Screen
+        name="Tables"
+        component={ActiveTablesScreen}
+        options={{ title: 'Tables', tabBarIcon: tabIcon('grid-outline') }}
       />
       <CounterTabs.Screen
         name="Display"
