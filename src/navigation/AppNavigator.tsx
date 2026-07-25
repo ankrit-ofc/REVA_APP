@@ -71,11 +71,19 @@ function WaiterNavigator() {
         component={WaiterCallsScreen}
         options={{ title: 'Calls', tabBarIcon: tabIcon('notifications-outline') }}
       />
+      {/*
+        Serve tab HIDDEN 2026-07-25 per request. Code intact — WaiterReadyScreen,
+        useMarkServedMutation and the /waiter/ready queue are all untouched.
+        NOTE: this is currently the ONLY way for a waiter to mark items served.
+        Uncomment to restore.
+      */}
+      {/*
       <WaiterTabs.Screen
         name="Serve"
         component={WaiterReadyScreen}
         options={{ title: 'Serve', tabBarIcon: tabIcon('checkmark-done-outline') }}
       />
+      */}
       <WaiterTabs.Screen
         name="Orders"
         component={WaiterOrdersScreen}
