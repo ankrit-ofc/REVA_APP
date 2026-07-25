@@ -157,6 +157,7 @@ export const {
   useQuickBillMutation,
   useGenerateInvoiceMutation,
   useGetInvoiceQuery,
+  useGetReceiptQuery,
   useLazyGetReceiptQuery,
   useGetPrintConfigQuery,
   usePayInvoiceMutation,
