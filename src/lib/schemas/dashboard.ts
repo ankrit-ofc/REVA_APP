@@ -29,6 +29,23 @@ export const activeTableSchema = z.object({
   orders: z.array(activeTableOrderSchema),
 })
 
+/**
+ * Floor-map row from GET /waiter/tables. Money stays a string (never float).
+ * `items` is the merged non-cancelled line list for the card; `orders` keeps
+ * the per-order breakdown (typically 0–1 OPEN order per table today).
+ */
+export const waiterTableSchema = z.object({
+  table_id: z.string().uuid(),
+  table_label: z.string(),
+  occupied: z.boolean(),
+  order_count: z.number().int(),
+  earliest_placed_at: z.string().nullable(),
+  total_amount: z.string(),
+  items: z.array(activeTableItemSchema),
+  orders: z.array(activeTableOrderSchema),
+})
+
 export type ActiveTableItem = z.infer<typeof activeTableItemSchema>
 export type ActiveTableOrder = z.infer<typeof activeTableOrderSchema>
 export type ActiveTable = z.infer<typeof activeTableSchema>
+export type WaiterTable = z.infer<typeof waiterTableSchema>
