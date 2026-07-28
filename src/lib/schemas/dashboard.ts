@@ -32,3 +32,26 @@ export const activeTableSchema = z.object({
 export type ActiveTableItem = z.infer<typeof activeTableItemSchema>
 export type ActiveTableOrder = z.infer<typeof activeTableOrderSchema>
 export type ActiveTable = z.infer<typeof activeTableSchema>
+
+/**
+ * The waiter floor view: **every** active table, occupied or not, as served by
+ * `GET /waiter/tables`. Deactivated tables (`is_active = false`, a soft delete)
+ * are excluded server-side and must never appear in the grid.
+ *
+ * `occupied` is derived, never stored — a table is occupied iff it has at least
+ * one OPEN order. A table may hold several open orders at once: `items` is the
+ * merged list across all of them (what the card shows), while `orders` keeps the
+ * per-order breakdown. `earliest_placed_at` is null on an unoccupied table.
+ */
+export const waiterTableSchema = z.object({
+  table_id: z.string().uuid(),
+  table_label: z.string(),
+  occupied: z.boolean(),
+  order_count: z.number().int(),
+  earliest_placed_at: z.string().nullable(),
+  total_amount: z.coerce.number(),
+  items: z.array(activeTableItemSchema),
+  orders: z.array(activeTableOrderSchema),
+})
+
+export type WaiterTable = z.infer<typeof waiterTableSchema>
