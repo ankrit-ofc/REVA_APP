@@ -1,5 +1,5 @@
-import { useCallback } from 'react'
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useState } from 'react'
+import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
@@ -7,6 +7,7 @@ import { Button } from '@/components/Button'
 import { QueryState } from '@/components/QueryState'
 import { useGetReadyItemsQuery, useMarkServedMutation } from '@/features/waiter/waiterApi'
 import { useStaffRealtime } from '@/features/realtime/useRealtime'
+import { errDetail } from '@/lib/errors'
 import { StatusBadge } from '@/components/StatusBadge'
 import { colors, spacing } from '@/theme'
 
@@ -17,7 +18,34 @@ import { colors, spacing } from '@/theme'
  */
 export function WaiterReadyScreen() {
   const { data, isLoading, isError, isFetching, refetch } = useGetReadyItemsQuery()
-  const [markServed, { isLoading: busy }] = useMarkServedMutation()
+  const [markServed] = useMarkServedMutation()
+
+  // Item ids with a mutation in flight — only the tapped card's button spins;
+  // every other card stays tappable.
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set())
+
+  // The cache patch in waiterApi removes the card instantly; on failure the
+  // patch is undone (card snaps back) and the alert makes the failure explicit.
+  const serve = useCallback(
+    async (itemId: string) => {
+      setPendingIds((prev) => new Set(prev).add(itemId))
+      try {
+        await markServed(itemId).unwrap()
+      } catch (e) {
+        Alert.alert(
+          'Could not mark served',
+          `${errDetail(e)}\n\nThe item was NOT updated — please try again.`,
+        )
+      } finally {
+        setPendingIds((prev) => {
+          const next = new Set(prev)
+          next.delete(itemId)
+          return next
+        })
+      }
+    },
+    [markServed],
+  )
 
   useStaffRealtime(
     useCallback(
@@ -57,7 +85,12 @@ export function WaiterReadyScreen() {
               <Text style={styles.addons}>+ {item.addons.map((a) => a.addon_name).join(', ')}</Text>
             ) : null}
             <View style={{ height: spacing.sm }} />
-            <Button title="Mark served" variant="success" disabled={busy} onPress={() => markServed(item.id)} />
+            <Button
+              title="Mark served"
+              variant="success"
+              loading={pendingIds.has(item.id)}
+              onPress={() => serve(item.id)}
+            />
           </Card>
         )}
         ListEmptyComponent={

@@ -1,5 +1,15 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { Field } from '@/components/Field'
@@ -15,16 +25,24 @@ import {
   useQuickBillMutation,
   useGenerateInvoiceMutation,
   useGetInvoiceQuery,
+  useGetPaymentQrQuery,
+  useGetReceiptQuery,
   usePayInvoiceMutation,
   useManualOverrideMutation,
   type CounterPayMethod,
 } from '@/features/counter/counterApi'
 import { useStaffRealtime } from '@/features/realtime/useRealtime'
+import { API_BASE_URL } from '@/lib/config'
 import { errDetail } from '@/lib/errors'
 import { formatMoney, newIdempotencyKey } from '@/lib/money'
 import type { CounterOrderSummary } from '@/lib/schemas/order'
 import type { Role } from '@/types'
 import { colors, radius, spacing } from '@/theme'
+
+/** Resolves a possibly-relative media path from the backend to an absolute URL. */
+function mediaUri(url: string): string {
+  return url.startsWith('http') ? url : `${API_BASE_URL}${url}`
+}
 
 const CURRENCY = 'NPR'
 const PAY_METHODS: CounterPayMethod[] = ['CASH', 'CARD', 'COUNTER_WALLET']
@@ -53,6 +71,7 @@ export function BillingView({ role }: { role: Role | null }) {
 function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
   const openQ = useGetCounterOpenOrdersQuery(undefined, { pollingInterval: 15_000 })
   const queueQ = useGetCounterOrdersQuery(undefined, { pollingInterval: 15_000 })
+  const qrQ = useGetPaymentQrQuery()
   const [markMealFinished] = useMarkMealFinishedMutation()
   const [startBilling] = useStartBillingMutation()
   const [reopenOrder, { isLoading: reopenBusy }] = useReopenCounterOrderMutation()
@@ -67,6 +86,9 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
   const [closeTarget, setCloseTarget] = useState<CounterOrderSummary | null>(null)
   const [billTarget, setBillTarget] = useState<CounterOrderSummary | null>(null)
   const [billErr, setBillErr] = useState<string | null>(null)
+  const [showQr, setShowQr] = useState(false)
+  // Invoice whose itemized receipt to show after a successful Bill & clear.
+  const [receiptInvoiceId, setReceiptInvoiceId] = useState<string | null>(null)
   // Stable idempotency key per Bill & Clear attempt — reused if the confirm is retried.
   const billKey = useRef('')
   const [err, setErr] = useState<string | null>(null)
@@ -121,8 +143,14 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
     if (!billTarget) return
     setBillErr(null)
     try {
-      await quickBill({ orderId: billTarget.id, method, idempotencyKey: billKey.current }).unwrap()
+      const inv = await quickBill({
+        orderId: billTarget.id,
+        method,
+        idempotencyKey: billKey.current,
+      }).unwrap()
+      // Payment is done and the table cleared; show the itemized receipt.
       setBillTarget(null)
+      setReceiptInvoiceId(inv.id)
     } catch (e) {
       setBillErr(errDetail(e))
     }
@@ -144,6 +172,13 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
       ListHeaderComponent={
         <View>
           {err ? <Text style={styles.err}>{err}</Text> : null}
+          {qrQ.data?.payment_qr_url ? (
+            <Button
+              title="Show payment QR"
+              variant="secondary"
+              onPress={() => setShowQr(true)}
+            />
+          ) : null}
           {open.length > 0 ? (
             <>
               <Text style={styles.section}>Open Tables</Text>
@@ -157,6 +192,11 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
                       {o.item_count} item{o.item_count !== 1 ? 's' : ''}
                     </Text>
                   </View>
+                  {(o.items ?? []).map((it, idx) => (
+                    <Text key={`${o.id}-${idx}`} style={styles.product}>
+                      {it.quantity}× {it.name}
+                    </Text>
+                  ))}
                   {o.bill_requested ? (
                     <Text style={styles.billRequested}>🔔 Bill requested</Text>
                   ) : (
@@ -182,6 +222,14 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
                         <View style={{ width: spacing.sm }} />
                       </>
                     ) : null}
+                    {/*
+                      "Move to billing" HIDDEN 2026-07-25 per request. Code
+                      intact — the markMealFinished hook + mutation are untouched.
+                      Discounts are applied elsewhere in the flow, so removing
+                      this screen's path to the MEAL_FINISHED queue is intended.
+                      Uncomment the button + its trailing spacer to restore.
+                    */}
+                    {/*
                     <View style={styles.flex}>
                       <Button
                         title="Move to billing"
@@ -191,6 +239,7 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
                       />
                     </View>
                     <View style={{ width: spacing.sm }} />
+                    */}
                     <Button title="Close" variant="danger" onPress={() => setCloseTarget(o)} />
                   </View>
                 </Card>
@@ -198,42 +247,44 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
             </>
           ) : null}
 
-          <Text style={styles.section}>Ready for Billing</Text>
+          {/*
+            "Ready for Billing" is now a DRAIN-ONLY safety net for any order still
+            in MEAL_FINISHED (e.g. in-flight at deploy time). No new tables route
+            here — both "Move to billing" buttons are hidden, so every table bills
+            through "Bill & clear" while OPEN. The discount UI is removed (discounts
+            unused); only a plain "Generate invoice" (0 discount) → pay remains so
+            leftover tables can still be cleared. Header + card render ONLY when
+            such tables exist, so nothing shows in normal operation.
+          */}
           {queue.length > 0 ? (
-            <Card>
-              <View style={styles.discountRow}>
-                <View style={styles.flex}>
-                  <Text style={styles.label}>Discount</Text>
-                  <View style={styles.toggle}>
-                    <ToggleChip
-                      label="Flat"
-                      active={discountType === 'flat'}
-                      onPress={() => setDiscountType('flat')}
-                    />
-                    <ToggleChip
-                      label="%"
-                      active={discountType === 'percent'}
-                      onPress={() => setDiscountType('percent')}
-                    />
+            <>
+              <Text style={styles.section}>Ready for Billing</Text>
+              <Card>
+                {/*
+                  Discount UI HIDDEN 2026-07-25 (discounts unused). Restore this
+                  <View style={styles.discountRow}> block to bring it back.
+                  <View style={styles.discountRow}>
+                    <View style={styles.flex}>
+                      <Text style={styles.label}>Discount</Text>
+                      <View style={styles.toggle}>
+                        <ToggleChip label="Flat" active={discountType === 'flat'} onPress={() => setDiscountType('flat')} />
+                        <ToggleChip label="%" active={discountType === 'percent'} onPress={() => setDiscountType('percent')} />
+                      </View>
+                    </View>
+                    <View style={{ width: spacing.md }} />
+                    <View style={styles.flex}>
+                      <Field label="Amount" value={discountValue} onChangeText={setDiscountValue} keyboardType="numeric" />
+                    </View>
                   </View>
-                </View>
-                <View style={{ width: spacing.md }} />
-                <View style={styles.flex}>
-                  <Field
-                    label="Amount"
-                    value={discountValue}
-                    onChangeText={setDiscountValue}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-              <Button
-                title={selectedId ? 'Generate invoice' : 'Select an order below'}
-                disabled={!selectedId}
-                loading={genBusy}
-                onPress={generate}
-              />
-            </Card>
+                */}
+                <Button
+                  title={selectedId ? 'Generate invoice' : 'Select an order below'}
+                  disabled={!selectedId}
+                  loading={genBusy}
+                  onPress={generate}
+                />
+              </Card>
+            </>
           ) : null}
         </View>
       }
@@ -265,9 +316,12 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
         />
       }
       ListFooterComponent={
-        !loading && queue.length === 0 ? (
-          <Text style={styles.muted}>No orders waiting for billing.</Text>
-        ) : null
+        // Footer "No orders waiting for billing." HIDDEN 2026-07-25 — the billing
+        // queue is drain-only now, so nothing about it shows when empty. Restore:
+        // !loading && queue.length === 0 ? (
+        //   <Text style={styles.muted}>No orders waiting for billing.</Text>
+        // ) : null
+        null
       }
     />
       <ReasonModal
@@ -311,6 +365,28 @@ function OrdersView({ onInvoice }: { onInvoice: (id: string) => void }) {
         onConfirm={confirmBill}
         onClose={() => setBillTarget(null)}
       />
+      <Modal
+        visible={showQr && !!qrQ.data?.payment_qr_url}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowQr(false)}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.qrModal}>
+            <Text style={styles.modalTitle}>Scan to pay</Text>
+            {qrQ.data?.payment_qr_url ? (
+              <Image
+                source={{ uri: mediaUri(qrQ.data.payment_qr_url) }}
+                style={styles.qrImage}
+                resizeMode="contain"
+              />
+            ) : null}
+            <View style={{ height: spacing.md }} />
+            <Button title="Done" variant="secondary" onPress={() => setShowQr(false)} />
+          </View>
+        </View>
+      </Modal>
+      <ReceiptModal invoiceId={receiptInvoiceId} onClose={() => setReceiptInvoiceId(null)} />
     </>
   )
 }
@@ -365,6 +441,96 @@ function MethodModal({
               />
             </View>
           </View>
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
+// ── Itemized receipt (read-only, after Bill & clear) ──────────────────────────
+
+/**
+ * Read-only itemized receipt, shared by two contexts (the itemized lines +
+ * totals are identical in both; only the header and QR differ):
+ *  - `variant="billing"` (default): shown after a successful Bill & clear. The
+ *    payment is ALREADY recorded and the table cleared by quickBill before this
+ *    opens, so a receipt-fetch failure is never treated as a billing failure —
+ *    it degrades to a "payment recorded, receipt unavailable" note. Shows the
+ *    "✓ Payment recorded" header and the payment QR.
+ *  - `variant="history"`: browsing a past order from Order History. Neutral
+ *    "STATUS · table" header, no QR (the order is already closed).
+ */
+export function ReceiptModal({
+  invoiceId,
+  onClose,
+  variant = 'billing',
+}: {
+  invoiceId: string | null
+  onClose: () => void
+  variant?: 'billing' | 'history'
+}) {
+  const { data, isLoading, isError } = useGetReceiptQuery(invoiceId ?? '', { skip: !invoiceId })
+  const qrQ = useGetPaymentQrQuery()
+  const unavailable = isError || (!isLoading && !data)
+  const isBilling = variant === 'billing'
+
+  return (
+    <Modal visible={!!invoiceId} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.receiptModal}>
+          {isBilling ? (
+            <Text style={styles.paidText}>✓ Payment recorded</Text>
+          ) : (
+            <Text style={styles.modalTitle}>
+              {data ? `${data.status} · ${data.table_name}` : 'Receipt'}
+            </Text>
+          )}
+          {isLoading ? (
+            <View style={styles.receiptLoading}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : unavailable ? (
+            <Text style={styles.muted}>
+              {isBilling ? 'Receipt unavailable — the payment was recorded.' : 'Receipt unavailable.'}
+            </Text>
+          ) : data ? (
+            <ScrollView style={styles.receiptScroll}>
+              <Text style={styles.receiptHead}>
+                {data.table_name} · #{data.order_number}
+              </Text>
+              <View style={styles.divider} />
+              {data.items.map((it, idx) => (
+                <View key={idx} style={styles.receiptLine}>
+                  <Text style={styles.receiptQtyName}>
+                    {it.quantity}× {it.product_name}
+                    {it.variant_name ? ` · ${it.variant_name}` : ''}
+                  </Text>
+                  <Text style={styles.receiptLineTotal}>
+                    {formatMoney(it.line_total, data.currency)}
+                  </Text>
+                </View>
+              ))}
+              <View style={styles.divider} />
+              <Row label="Subtotal" value={formatMoney(data.subtotal, data.currency)} />
+              {data.discount > 0 ? (
+                <Row label="Discount" value={`- ${formatMoney(data.discount, data.currency)}`} />
+              ) : null}
+              <Row label="Tax" value={formatMoney(data.tax_total, data.currency)} />
+              <Row label="TOTAL" value={formatMoney(data.total, data.currency)} bold />
+              {isBilling && qrQ.data?.payment_qr_url ? (
+                <View style={styles.receiptQr}>
+                  <Text style={styles.label}>Scan to pay</Text>
+                  <Image
+                    source={{ uri: mediaUri(qrQ.data.payment_qr_url) }}
+                    style={styles.qrImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              ) : null}
+            </ScrollView>
+          ) : null}
+          <View style={{ height: spacing.md }} />
+          <Button title="Done" variant="secondary" onPress={onClose} />
         </View>
       </View>
     </Modal>
@@ -535,6 +701,7 @@ const styles = StyleSheet.create({
   orderNo: { fontSize: 15, fontWeight: '800', color: colors.text, marginRight: spacing.sm },
   table: { fontSize: 14, color: colors.text },
   items: { fontSize: 13, color: colors.textMuted },
+  product: { fontSize: 14, color: colors.text, marginBottom: 2 },
   muted: { fontSize: 13, color: colors.textMuted, marginTop: spacing.xs },
   billRequested: { fontSize: 13, color: colors.warning, fontWeight: '700' },
   actions: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md },
@@ -603,4 +770,24 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: spacing.xs },
   modalHint: { fontSize: 13, color: colors.textMuted, marginBottom: spacing.md },
+  qrModal: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  qrImage: { width: 260, height: 260, marginTop: spacing.md },
+  receiptModal: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    maxHeight: '80%',
+  },
+  receiptLoading: { paddingVertical: spacing.xl, alignItems: 'center' },
+  receiptScroll: { marginTop: spacing.sm },
+  receiptHead: { fontSize: 14, fontWeight: '700', color: colors.text, marginTop: spacing.xs },
+  receiptLine: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 2 },
+  receiptQtyName: { flex: 1, fontSize: 14, color: colors.text, paddingRight: spacing.sm },
+  receiptLineTotal: { fontSize: 14, color: colors.text },
+  receiptQr: { alignItems: 'center', marginTop: spacing.md },
 })

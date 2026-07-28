@@ -1,5 +1,5 @@
-import { useCallback } from 'react'
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useState } from 'react'
+import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
 import { Card } from '@/components/Card'
@@ -13,6 +13,7 @@ import {
   useCancelItemMutation,
 } from '@/features/kitchen/kitchenApi'
 import { useStaffRealtime } from '@/features/realtime/useRealtime'
+import { errDetail } from '@/lib/errors'
 import type { QueueItemResponse } from '@/lib/schemas/workflow'
 import { colors, spacing } from '@/theme'
 
@@ -20,9 +21,13 @@ const REFETCH_EVENTS = new Set(['order.created', 'order_item.status_changed', 'o
 
 export function KitchenScreen() {
   const { data, isLoading, isError, isFetching, refetch } = useGetKitchenQueueQuery()
-  const [markPreparing, { isLoading: preparingBusy }] = useMarkPreparingMutation()
-  const [markReady, { isLoading: readyBusy }] = useMarkReadyMutation()
+  const [markPreparing] = useMarkPreparingMutation()
+  const [markReady] = useMarkReadyMutation()
   const [cancelItem] = useCancelItemMutation()
+
+  // Item ids with a mutation in flight — only the tapped card's button spins;
+  // every other card stays tappable.
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set())
 
   useStaffRealtime(
     useCallback(
@@ -33,7 +38,30 @@ export function KitchenScreen() {
     ),
   )
 
-  const busy = preparingBusy || readyBusy
+  // The cache patch in kitchenApi moves the card instantly; on failure the patch
+  // is undone (card snaps back) and the alert makes the failure explicit — a
+  // silently reverted "done" must never pass for a done item.
+  const runItemAction = useCallback(
+    async (
+      itemId: string,
+      trigger: (id: string) => { unwrap: () => Promise<unknown> },
+      failTitle: string,
+    ) => {
+      setPendingIds((prev) => new Set(prev).add(itemId))
+      try {
+        await trigger(itemId).unwrap()
+      } catch (e) {
+        Alert.alert(failTitle, `${errDetail(e)}\n\nThe item was NOT updated — please try again.`)
+      } finally {
+        setPendingIds((prev) => {
+          const next = new Set(prev)
+          next.delete(itemId)
+          return next
+        })
+      }
+    },
+    [],
+  )
 
   const renderItem = useCallback(
     ({ item }: { item: QueueItemResponse }) => (
@@ -58,7 +86,11 @@ export function KitchenScreen() {
         <View style={styles.actions}>
           {item.status === 'NEW' ? (
             <View style={styles.flex}>
-              <Button title="Start preparing" onPress={() => markPreparing(item.id)} disabled={busy} />
+              <Button
+                title="Start preparing"
+                loading={pendingIds.has(item.id)}
+                onPress={() => runItemAction(item.id, markPreparing, 'Could not start preparing')}
+              />
             </View>
           ) : null}
           {item.status === 'PREPARING' ? (
@@ -66,8 +98,8 @@ export function KitchenScreen() {
               <Button
                 title="Mark ready"
                 variant="success"
-                onPress={() => markReady(item.id)}
-                disabled={busy}
+                loading={pendingIds.has(item.id)}
+                onPress={() => runItemAction(item.id, markReady, 'Could not mark ready')}
               />
             </View>
           ) : null}
@@ -76,7 +108,7 @@ export function KitchenScreen() {
         </View>
       </Card>
     ),
-    [busy, markPreparing, markReady, cancelItem],
+    [pendingIds, runItemAction, markPreparing, markReady, cancelItem],
   )
 
   return (

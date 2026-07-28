@@ -19,6 +19,8 @@ function tabIcon(name: IoniconName) {
 }
 
 import { KitchenScreen } from '@/screens/kitchen/KitchenScreen'
+import { TablesScreen as ActiveTablesScreen } from '@/screens/tables/TablesScreen'
+import { OrderHistoryScreen } from '@/screens/history/OrderHistoryScreen'
 import { WaiterCallsScreen } from '@/screens/waiter/WaiterCallsScreen'
 import { WaiterReadyScreen } from '@/screens/waiter/WaiterReadyScreen'
 import { WaiterOrdersScreen } from '@/screens/waiter/WaiterOrdersScreen'
@@ -71,10 +73,23 @@ function WaiterNavigator() {
         component={WaiterCallsScreen}
         options={{ title: 'Calls', tabBarIcon: tabIcon('notifications-outline') }}
       />
+      {/*
+        Serve tab HIDDEN 2026-07-25 per request. Code intact — WaiterReadyScreen,
+        useMarkServedMutation and the /waiter/ready queue are all untouched.
+        NOTE: this is currently the ONLY way for a waiter to mark items served.
+        Uncomment to restore.
+      */}
+      {/*
       <WaiterTabs.Screen
         name="Serve"
         component={WaiterReadyScreen}
         options={{ title: 'Serve', tabBarIcon: tabIcon('checkmark-done-outline') }}
+      />
+      */}
+      <WaiterTabs.Screen
+        name="Tables"
+        component={ActiveTablesScreen}
+        options={{ title: 'Tables', tabBarIcon: tabIcon('grid-outline') }}
       />
       <WaiterTabs.Screen
         name="Orders"
@@ -85,6 +100,11 @@ function WaiterNavigator() {
         name="WaiterBilling"
         component={WaiterBillingScreen}
         options={{ title: 'Billing', tabBarIcon: tabIcon('card-outline') }}
+      />
+      <WaiterTabs.Screen
+        name="History"
+        component={OrderHistoryScreen}
+        options={{ title: 'History', tabBarIcon: tabIcon('time-outline') }}
       />
     </WaiterTabs.Navigator>
   )
@@ -101,9 +121,19 @@ function CounterNavigator() {
         options={{ title: 'Billing', tabBarIcon: tabIcon('card-outline') }}
       />
       <CounterTabs.Screen
+        name="Tables"
+        component={ActiveTablesScreen}
+        options={{ title: 'Tables', tabBarIcon: tabIcon('grid-outline') }}
+      />
+      <CounterTabs.Screen
         name="Display"
         component={CounterDisplayScreen}
         options={{ title: 'Display', tabBarIcon: tabIcon('tv-outline') }}
+      />
+      <CounterTabs.Screen
+        name="History"
+        component={OrderHistoryScreen}
+        options={{ title: 'History', tabBarIcon: tabIcon('time-outline') }}
       />
     </CounterTabs.Navigator>
   )

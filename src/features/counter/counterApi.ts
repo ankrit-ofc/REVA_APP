@@ -1,11 +1,14 @@
+import { z } from 'zod'
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { axiosBaseQuery } from '@/services/api'
 import { parseWith } from '@/lib/parseResponse'
 import {
   orderResponseSchema,
+  counterOrderSummarySchema,
   type CounterOrderSummary,
   type OrderResponse,
 } from '@/lib/schemas/order'
+import { paymentQrResponseSchema, type PaymentQrResponse } from '@/lib/schemas/menu'
 import {
   invoiceResponseSchema,
   receiptResponseSchema,
@@ -13,11 +16,23 @@ import {
   type ReceiptResponse,
 } from '@/lib/schemas/invoice'
 import { printConfigSchema, type PrintConfig } from '@/lib/schemas/admin'
+import {
+  orderHistoryResponseSchema,
+  type OrderHistoryResponse,
+} from '@/lib/schemas/history'
 
 export interface GenerateInvoiceBody {
   order_id: string
   discount_type?: 'flat' | 'percent'
   discount_value?: number
+}
+
+export interface OrderHistoryParams {
+  limit?: number
+  offset?: number
+  table_id?: string
+  date_from?: string
+  date_to?: string
 }
 
 export type CounterPayMethod = 'CASH' | 'CARD' | 'COUNTER_WALLET'
@@ -29,11 +44,25 @@ export const counterApi = createApi({
   endpoints: (builder) => ({
     getCounterOrders: builder.query<CounterOrderSummary[], void>({
       query: () => ({ method: 'GET', url: '/counter/orders' }),
+      transformResponse: parseWith(z.array(counterOrderSummarySchema)),
       providesTags: ['CounterOrders'],
     }),
     getCounterOpenOrders: builder.query<CounterOrderSummary[], void>({
       query: () => ({ method: 'GET', url: '/counter/open-orders' }),
+      transformResponse: parseWith(z.array(counterOrderSummarySchema)),
       providesTags: ['CounterOpenOrders'],
+    }),
+    getPaymentQr: builder.query<PaymentQrResponse, void>({
+      query: () => ({ method: 'GET', url: '/counter/payment-qr' }),
+      transformResponse: parseWith(paymentQrResponseSchema),
+    }),
+    getOrderHistory: builder.query<OrderHistoryResponse, OrderHistoryParams | void>({
+      query: (params) => ({
+        method: 'GET',
+        url: '/counter/order-history',
+        params: params ?? {},
+      }),
+      transformResponse: parseWith(orderHistoryResponseSchema),
     }),
     // Relay a manual kitchen-ticket print to the print station. No cache change —
     // printing happens on the station (worker), not in this response.
@@ -139,6 +168,8 @@ export const counterApi = createApi({
 export const {
   useGetCounterOrdersQuery,
   useGetCounterOpenOrdersQuery,
+  useGetPaymentQrQuery,
+  useLazyGetOrderHistoryQuery,
   usePrintKotMutation,
   useMarkMealFinishedMutation,
   useReopenCounterOrderMutation,
@@ -147,6 +178,7 @@ export const {
   useQuickBillMutation,
   useGenerateInvoiceMutation,
   useGetInvoiceQuery,
+  useGetReceiptQuery,
   useLazyGetReceiptQuery,
   useGetPrintConfigQuery,
   usePayInvoiceMutation,
