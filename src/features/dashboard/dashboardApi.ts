@@ -6,152 +6,102 @@ import {
   activeTableSchema,
   waiterTableSchema,
   type ActiveTable,
+  type ActiveTableItem,
   type WaiterTable,
 } from '@/lib/schemas/dashboard'
 
-/**
- * Merge order line items by product name (same rule as backend waiter_tables).
- */
-function mergeItems(orders: ActiveTable['orders']): WaiterTable['items'] {
-  const qty = new Map<string, number>()
+type QueryError = { status?: number; data?: unknown; message?: string }
+
+const parseWaiterTables = parseWith(z.array(waiterTableSchema))
+const parseActiveTables = parseWith(z.array(activeTableSchema))
+
+// ── TEMPORARY DEBT — DELETE THIS WHOLE BLOCK WHEN `GET /waiter/tables` DEPLOYS ──
+//
+// `/waiter/tables` currently 404s in production (the route is written but not
+// released). Everything between here and `dashboardApi` exists only to keep the
+// grid usable until it ships, and all of it comes out in one piece afterwards:
+// delete the helpers, delete the 404 branch in `queryFn`, keep the happy path.
+//
+// While the fallback is live the grid is occupied-only for every role that
+// reaches this screen (WAITER and COUNTER), because /dashboard/active-tables
+// knows nothing about empty tables — Available cards simply don't appear.
+//
+// Do not widen this: no new roles, no new endpoints composed on top of it.
+
+/** Merge line items by product name across every open order on the table. */
+function mergeItems(orders: ActiveTable['orders']): ActiveTableItem[] {
+  const merged = new Map<string, ActiveTableItem>()
   for (const order of orders) {
     for (const item of order.items) {
-      qty.set(item.name, (qty.get(item.name) ?? 0) + item.quantity)
+      const seen = merged.get(item.name)
+      if (seen) seen.quantity += item.quantity
+      else merged.set(item.name, { name: item.name, quantity: item.quantity })
     }
   }
-  return [...qty.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, quantity]) => ({ name, quantity }))
+  return [...merged.values()]
 }
 
-/** Map occupied-only active-tables rows into the floor-map WaiterTable shape. */
-function activeToWaiter(t: ActiveTable): WaiterTable {
+/**
+ * Every row from `/dashboard/active-tables` is occupied by definition — the
+ * endpoint only knows about tables holding at least one OPEN order.
+ */
+function occupiedToWaiterTable(t: ActiveTable): WaiterTable {
   return {
     table_id: t.table_id,
     table_label: t.table_label,
     occupied: true,
     order_count: t.order_count,
     earliest_placed_at: t.earliest_placed_at,
-    total_amount: Number(t.total_amount).toFixed(2),
+    // Already a Decimal string from the backend — passed through untouched.
+    total_amount: t.total_amount,
     items: mergeItems(t.orders),
     orders: t.orders,
   }
 }
 
-/**
- * Build full floor (Available + Occupied) from admin table list + occupancy.
- * Loose parse — production payloads may omit/extra fields; never throw.
- */
-function mergeAdminFloor(adminData: unknown, occupied: ActiveTable[]): WaiterTable[] | null {
-  if (!Array.isArray(adminData)) return null
-
-  const byId = new Map(occupied.map((t) => [t.table_id, t]))
-  const rows: WaiterTable[] = []
-
-  for (const raw of adminData) {
-    if (!raw || typeof raw !== 'object') continue
-    const t = raw as Record<string, unknown>
-    if (t.is_active === false) continue
-    const id = typeof t.id === 'string' ? t.id : null
-    const name = typeof t.name === 'string' ? t.name : null
-    if (!id || !name) continue
-
-    const occ = byId.get(id)
-    if (occ) {
-      rows.push(activeToWaiter(occ))
-    } else {
-      rows.push({
-        table_id: id,
-        table_label: name,
-        occupied: false,
-        order_count: 0,
-        earliest_placed_at: null,
-        total_amount: '0.00',
-        items: [],
-        orders: [],
-      })
-    }
-  }
-
-  return rows.length > 0 ? rows : null
-}
+// ── END TEMPORARY DEBT ────────────────────────────────────────────────────────
 
 /**
- * Dashboard / floor-map reads.
- *
- * Prefers GET /waiter/tables (all tables + Available). On production that route
- * may still be missing (404) — then ADMIN can compose the floor via
- * /admin/tables + /dashboard/active-tables. Waiter/Counter without the new
- * route only see occupied tables until the backend is deployed.
+ * Dashboard read-endpoints. Only the floor view is exposed to staff
+ * (WAITER/COUNTER) — the analytics routes stay ADMIN-only server-side, so they
+ * are deliberately not modelled here.
  */
 export const dashboardApi = createApi({
   reducerPath: 'dashboardApi',
   baseQuery: axiosBaseQuery,
-  tagTypes: ['ActiveTables'],
+  tagTypes: ['WaiterTables'],
   endpoints: (builder) => ({
-    getActiveTables: builder.query<ActiveTable[], void>({
-      query: () => ({ method: 'GET', url: '/dashboard/active-tables' }),
-      transformResponse: parseWith(z.array(activeTableSchema)),
-      providesTags: ['ActiveTables'],
-    }),
     getWaiterTables: builder.query<WaiterTable[], void>({
-      async queryFn(_arg, _api, _extra, baseQuery) {
-        const primary = await baseQuery({ method: 'GET', url: '/waiter/tables' })
-        if (!primary.error) {
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const full = await baseQuery({ method: 'GET', url: '/waiter/tables' })
+
+        if (!full.error) {
           try {
-            return { data: parseWith(z.array(waiterTableSchema))(primary.data) }
+            return { data: parseWaiterTables(full.data) }
           } catch (e) {
-            return {
-              error: {
-                status: undefined,
-                message: e instanceof Error ? e.message : 'Invalid waiter/tables response',
-              },
-            }
+            return { error: { message: (e as Error).message } satisfies QueryError }
           }
         }
 
-        // Not deployed yet, or transient error — try compose path for ADMIN.
-        const status = primary.error.status
-        if (status != null && status !== 404) {
-          // Still try admin compose on 403/401 from waiter path — shouldn't happen
-          // for authenticated floor staff, but don't block ADMIN merge.
-          if (status !== 401 && status !== 403) {
-            return { error: primary.error }
-          }
+        // Only a missing route falls back. A 401/403/500 is a real failure and
+        // must surface as an error — never a silently half-populated floor.
+        if ((full.error as QueryError).status !== 404) {
+          return { error: full.error as QueryError }
         }
 
-        const activeRes = await baseQuery({
-          method: 'GET',
-          url: '/dashboard/active-tables',
-        })
-        if (activeRes.error) {
-          return { error: activeRes.error }
-        }
+        // TEMPORARY DEBT — see the block above.
+        const legacy = await baseQuery({ method: 'GET', url: '/dashboard/active-tables' })
+        if (legacy.error) return { error: legacy.error as QueryError }
 
-        let occupied: ActiveTable[]
         try {
-          occupied = parseWith(z.array(activeTableSchema))(activeRes.data)
+          return { data: parseActiveTables(legacy.data).map(occupiedToWaiterTable) }
         } catch (e) {
-          return {
-            error: {
-              status: undefined,
-              message: e instanceof Error ? e.message : 'Invalid active-tables response',
-            },
-          }
+          return { error: { message: (e as Error).message } satisfies QueryError }
         }
-
-        const adminRes = await baseQuery({ method: 'GET', url: '/admin/tables' })
-        if (!adminRes.error) {
-          const merged = mergeAdminFloor(adminRes.data, occupied)
-          if (merged) return { data: merged }
-        }
-
-        // Waiter/Counter on prod without /waiter/tables: occupied only.
-        return { data: occupied.map(activeToWaiter) }
       },
-      providesTags: ['ActiveTables'],
+      providesTags: ['WaiterTables'],
     }),
   }),
 })
 
-export const { useGetActiveTablesQuery, useGetWaiterTablesQuery } = dashboardApi
+export const { useGetWaiterTablesQuery } = dashboardApi

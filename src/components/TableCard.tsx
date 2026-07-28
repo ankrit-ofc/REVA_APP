@@ -1,125 +1,74 @@
 import { StyleSheet, Text, View } from 'react-native'
+import { Card } from '@/components/Card'
 import type { WaiterTable } from '@/lib/schemas/dashboard'
-import { colors, radius, spacing } from '@/theme'
+import { colors, spacing } from '@/theme'
 
-const MIN_HEIGHT = 148
-
-type Props = {
-  table: WaiterTable
-}
+/** How many merged item lines fit on a card before we collapse to "+N more". */
+const MAX_ITEM_LINES = 3
 
 /**
- * Floor-map cell matching the staff tables mock:
- * [dot + label] …… [Occupied|Available], then up to 3 items or “No active order”.
- * Occupied = red, Available = green (mock had colours inverted).
+ * One tile in the floor grid. State is carried by colour **and** text — red and
+ * green are the common colour-blind pair, so the dot is always paired with the
+ * word "Occupied" / "Available" rather than standing on its own.
  */
-export function TableCard({ table }: Props) {
-  const preview = table.items.slice(0, 3)
-  const more = table.items.length - preview.length
-  const occupied = table.occupied
+export function TableCard({ table }: { table: WaiterTable }) {
+  const state = table.occupied ? 'Occupied' : 'Available'
+  const shown = table.items.slice(0, MAX_ITEM_LINES)
+  const hidden = table.items.length - shown.length
 
   return (
-    <View style={[styles.card, occupied ? styles.cardOccupied : styles.cardFree]}>
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
+    <Card>
+      <View
+        accessible
+        accessibilityLabel={`Table ${table.table_label}, ${state}`}
+        accessibilityRole="summary"
+      >
+        <View style={styles.stateRow}>
           <View
-            style={[styles.dot, { backgroundColor: occupied ? colors.danger : colors.success }]}
-            accessibilityLabel={occupied ? 'Occupied' : 'Available'}
+            style={[styles.dot, { backgroundColor: table.occupied ? colors.danger : colors.success }]}
           />
           <Text style={styles.label} numberOfLines={1}>
             {table.table_label}
           </Text>
+          <View style={styles.flex} />
+          <Text style={[styles.state, table.occupied ? styles.occupied : styles.available]}>
+            {state}
+          </Text>
         </View>
-        <Text style={[styles.statusText, occupied ? styles.statusOccupied : styles.statusFree]}>
-          {occupied ? 'Occupied' : 'Available'}
-        </Text>
-      </View>
 
-      {occupied ? (
-        <View style={styles.items}>
-          {preview.length === 0 ? (
-            <Text style={styles.muted}>No items yet</Text>
+        <View style={styles.body}>
+          {table.occupied ? (
+            <>
+              {shown.length === 0 ? (
+                <Text style={styles.muted}>No items yet</Text>
+              ) : (
+                shown.map((it, idx) => (
+                  <Text key={`${table.table_id}-${idx}`} style={styles.item} numberOfLines={1}>
+                    {it.quantity}× {it.name}
+                  </Text>
+                ))
+              )}
+              {hidden > 0 ? <Text style={styles.more}>+{hidden} more</Text> : null}
+            </>
           ) : (
-            preview.map((it, idx) => (
-              <Text key={`${table.table_id}-${idx}`} style={styles.item} numberOfLines={1}>
-                {it.quantity}x {it.name}
-              </Text>
-            ))
+            <Text style={styles.muted}>No active order</Text>
           )}
-          {more > 0 ? <Text style={styles.more}>+{more} more</Text> : null}
         </View>
-      ) : (
-        <Text style={styles.available}>No active order</Text>
-      )}
-    </View>
+      </View>
+    </Card>
   )
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-    minHeight: MIN_HEIGHT,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  cardOccupied: {
-    borderColor: colors.danger + '55',
-  },
-  cardFree: {
-    borderColor: colors.success + '44',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    flexShrink: 1,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.text,
-    flexShrink: 1,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  statusOccupied: { color: colors.danger },
-  statusFree: { color: colors.success },
-  items: {
-    gap: 2,
-  },
-  item: {
-    fontSize: 13,
-    color: colors.text,
-  },
-  more: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textMuted,
-    marginTop: 2,
-  },
-  available: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  muted: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
+  stateRow: { flexDirection: 'row', alignItems: 'center' },
+  flex: { flex: 1 },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: spacing.xs },
+  label: { fontSize: 16, fontWeight: '800', color: colors.text, flexShrink: 1 },
+  state: { fontSize: 12, fontWeight: '700', marginLeft: spacing.sm },
+  occupied: { color: colors.danger },
+  available: { color: colors.success },
+  body: { marginTop: spacing.sm },
+  item: { fontSize: 13, color: colors.text, marginBottom: 2 },
+  more: { fontSize: 12, fontWeight: '600', color: colors.textMuted, marginTop: 2 },
+  muted: { fontSize: 13, color: colors.textMuted },
 })

@@ -9,36 +9,58 @@ import { useStaffRealtime } from '@/features/realtime/useRealtime'
 import type { WaiterTable } from '@/lib/schemas/dashboard'
 import { colors, spacing } from '@/theme'
 
+// Occupancy is derived from open orders, so the grid moves whenever an order is
+// created, transitions, is approved, closes, or its bill is settled. Without
+// order.closed / invoice.paid a freed table stays red until the next poll.
 const REFETCH_EVENTS = new Set([
   'order.created',
   'order.status_changed',
   'order.approval_requested',
   'order.approval_decided',
+  'order.closed',
   'order_item.status_changed',
   'bill.requested',
-  // Settling a bill frees the table — without these the green Available sticks until poll.
-  'order.closed',
   'invoice.paid',
 ])
 
-/** Natural sort so T2 precedes T10 (stable floor positions). */
-function byTableLabel(a: WaiterTable, b: WaiterTable): number {
-  return a.table_label.localeCompare(b.table_label, undefined, {
-    numeric: true,
-    sensitivity: 'base',
-  })
+/**
+ * Compares labels the way staff read them: "T2" before "T10". Hand-rolled rather
+ * than `localeCompare(…, { numeric: true })` because Hermes' Intl support varies
+ * by platform and the ordering here has to be identical on every device.
+ */
+function naturalCompare(a: string, b: string): number {
+  const as = a.match(/\d+|\D+/g) ?? []
+  const bs = b.match(/\d+|\D+/g) ?? []
+  for (let i = 0; i < Math.max(as.length, bs.length); i += 1) {
+    const x = as[i]
+    const y = bs[i]
+    if (x === undefined) return -1
+    if (y === undefined) return 1
+    if (/^\d/.test(x) && /^\d/.test(y)) {
+      if (Number(x) !== Number(y)) return Number(x) - Number(y)
+    } else if (x !== y) {
+      return x < y ? -1 : 1
+    }
+  }
+  return 0
 }
 
 /**
- * Floor map for waiter/counter: every active table in a 2-column grid.
- * Occupancy from GET /waiter/tables (or prod fallback); name sort (not occupied-first).
+ * The floor grid: every active table, occupied or not, two to a row.
+ *
+ * Cards are sorted by table label and **never** reorder on occupancy — the grid
+ * is positionally stable so staff can build muscle memory against the physical
+ * floor plan. Read-only; no state transitions happen here.
  */
 export function TablesScreen() {
   const navigation = useNavigation()
+
   const { data, isLoading, isError, isFetching, refetch } = useGetWaiterTablesQuery(undefined, {
     pollingInterval: 15_000,
   })
 
+  // NOTE: this reuses the screen's single existing useStaffRealtime subscription.
+  // Do not add another call site — each one opens its own WebSocket (known bug).
   useStaffRealtime(
     useCallback(
       (ev) => {
@@ -48,7 +70,11 @@ export function TablesScreen() {
     ),
   )
 
-  const tables = useMemo(() => [...(data ?? [])].sort(byTableLabel), [data])
+  const tables = useMemo<WaiterTable[]>(
+    () => [...(data ?? [])].sort((a, b) => naturalCompare(a.table_label, b.table_label)),
+    [data],
+  )
+
   const occupiedCount = useMemo(() => tables.filter((t) => t.occupied).length, [tables])
 
   useLayoutEffect(() => {
@@ -84,7 +110,7 @@ export function TablesScreen() {
             error={isError}
             empty={!isLoading && !isError}
             emptyText="No tables set up yet."
-            emptyIcon="restaurant-outline"
+            emptyIcon="grid-outline"
           />
         }
       />
@@ -93,22 +119,10 @@ export function TablesScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: {
-    padding: spacing.lg,
-    flexGrow: 1,
-    gap: spacing.md,
-  },
-  headerCount: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textMuted,
-    marginRight: spacing.md,
-  },
-  row: {
-    gap: spacing.md,
-  },
-  cell: {
-    flex: 1,
-    maxWidth: '50%',
-  },
+  list: { padding: spacing.lg, flexGrow: 1 },
+  row: { gap: spacing.md },
+  // maxWidth keeps a lone card on an odd final row at half width instead of
+  // stretching it across the whole grid.
+  cell: { flex: 1, maxWidth: '50%' },
+  headerCount: { fontSize: 13, fontWeight: '600', color: colors.textMuted, marginRight: spacing.md },
 })
